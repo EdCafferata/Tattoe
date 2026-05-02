@@ -186,7 +186,7 @@
 					};
 				};
 			};
-			buildConfigurationList = DDEAE1C62FA53D2900A6BB6A /* Build configuration list for PBXProject "tattoe" */;
+			buildConfigurationList = DDEAE1C62FA53D2900A6BB6A /* Build configuration list for PBXProject "Tattoe" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -580,7 +580,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		DDEAE1C62FA53D2900A6BB6A /* Build configuration list for PBXProject "tattoe" */ = {
+		DDEAE1C62FA53D2900A6BB6A /* Build configuration list for PBXProject "Tattoe" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DDEAE1EA2FA53D2C00A6BB6A /* Debug */,
