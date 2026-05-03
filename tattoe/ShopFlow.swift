@@ -106,6 +106,17 @@ struct ShopLoginView: View {
                 }
                 .padding(.bottom, 40)
             }
+
+            if store.isCheckingCloud {
+                Color.black.opacity(0.7).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    ProgressView().tint(.white).scaleEffect(1.2)
+                    Text("ACCOUNT OPHALEN…")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(3)
+                        .foregroundColor(Color(white: 0.5))
+                }
+            }
         }
         .fullScreenCover(isPresented: $showEmailRegister) {
             ShopEmailRegisterView(onLogout: onLogout)
@@ -117,23 +128,28 @@ struct ShopLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
-            let shop = Shop(
-                authMethod:   .apple,
-                appleUserID:  cred.user,
-                bedrijfsnaam: "",
-                kvk:          "",
-                btw:          "",
-                voornaam:     cred.fullName?.givenName  ?? "",
-                achternaam:   cred.fullName?.familyName ?? "",
-                email:        cred.email ?? "",
-                wachtwoord:   "",
-                telefoon:     "",
-                straat:       "",
-                huisnummer:   "",
-                postcode:     "",
-                woonplaats:   ""
-            )
-            store.save(shop)
+            Task {
+                await store.checkCloud(appleUserID: cred.user)
+                if !store.isLoggedIn {
+                    let shop = Shop(
+                        authMethod:   .apple,
+                        appleUserID:  cred.user,
+                        bedrijfsnaam: "",
+                        kvk:          "",
+                        btw:          "",
+                        voornaam:     cred.fullName?.givenName  ?? "",
+                        achternaam:   cred.fullName?.familyName ?? "",
+                        email:        cred.email ?? "",
+                        wachtwoord:   "",
+                        telefoon:     "",
+                        straat:       "",
+                        huisnummer:   "",
+                        postcode:     "",
+                        woonplaats:   ""
+                    )
+                    store.save(shop)
+                }
+            }
         case .failure(let err):
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."

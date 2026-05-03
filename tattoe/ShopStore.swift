@@ -18,9 +18,11 @@ struct Shop: Codable {
     var woonplaats:   String
 }
 
+@MainActor
 class ShopStore: ObservableObject {
-    @Published var shop:      Shop?
-    @Published var isLoggedIn: Bool = false
+    @Published var shop:            Shop?
+    @Published var isLoggedIn:      Bool = false
+    @Published var isCheckingCloud: Bool = false
 
     private let loginKey = "shop_logged_in"
     private let dataKey  = "shop_data"
@@ -33,17 +35,30 @@ class ShopStore: ObservableObject {
     }
 
     func save(_ shop: Shop) {
-        self.shop      = shop
+        self.shop       = shop
         self.isLoggedIn = true
         UserDefaults.standard.set(true, forKey: loginKey)
         if let data = try? JSONEncoder().encode(shop) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
+        Task { try? await CloudKitManager.shared.saveShop(shop) }
+    }
+
+    func checkCloud(appleUserID: String) async {
+        isCheckingCloud = true
+        defer { isCheckingCloud = false }
+        guard let found = await CloudKitManager.shared.fetchShop(appleUserID: appleUserID) else { return }
+        shop       = found
+        isLoggedIn = true
+        UserDefaults.standard.set(true, forKey: loginKey)
+        if let data = try? JSONEncoder().encode(found) {
+            UserDefaults.standard.set(data, forKey: dataKey)
+        }
     }
 
     func logout() {
-        self.shop       = nil
-        self.isLoggedIn = false
+        shop       = nil
+        isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
     }

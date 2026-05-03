@@ -13,6 +13,8 @@ struct KlantFlowView: View {
             if store.isLoggedIn, let klant = store.klant {
                 if klant.voornaam.isEmpty {
                     KlantNAWView(onLogout: onLogout)
+                } else if !store.consentGegeven {
+                    KlantConsentView(onLogout: onLogout)
                 } else {
                     KlantDashboardView(onLogout: onLogout)
                 }
@@ -62,7 +64,6 @@ struct KlantAppleLoginView: View {
                 Spacer().frame(height: 52)
 
                 VStack(spacing: 12) {
-                    // Apple Sign In
                     SignInWithAppleButton(.signIn) { request in
                         request.requestedScopes = [.fullName, .email]
                     } onCompletion: { result in
@@ -72,7 +73,6 @@ struct KlantAppleLoginView: View {
                     .frame(height: 54)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    // Email registratie
                     Button(action: { showEmailRegister = true }) {
                         HStack(spacing: 10) {
                             Image(systemName: "envelope.fill")
@@ -108,6 +108,18 @@ struct KlantAppleLoginView: View {
                 }
                 .padding(.bottom, 40)
             }
+
+            // Laadscherm tijdens CloudKit check
+            if store.isCheckingCloud {
+                Color.black.opacity(0.7).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    ProgressView().tint(.white).scaleEffect(1.2)
+                    Text("ACCOUNT OPHALEN…")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(3)
+                        .foregroundColor(Color(white: 0.5))
+                }
+            }
         }
         .fullScreenCover(isPresented: $showEmailRegister) {
             KlantEmailRegisterView(onLogout: onLogout)
@@ -119,20 +131,28 @@ struct KlantAppleLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
-            let klant = Klant(
-                authMethod:  .apple,
-                appleUserID: cred.user,
-                voornaam:    cred.fullName?.givenName  ?? "",
-                achternaam:  cred.fullName?.familyName ?? "",
-                email:       cred.email ?? "",
-                wachtwoord:  "",
-                telefoon:    "",
-                straat:      "",
-                huisnummer:  "",
-                postcode:    "",
-                woonplaats:  ""
-            )
-            store.save(klant)
+            Task {
+                // Eerst CloudKit checken — bestaand account terugzetten
+                await store.checkCloud(appleUserID: cred.user)
+
+                // Alleen nieuw aanmaken als er niets in CloudKit stond
+                if !store.isLoggedIn {
+                    let klant = Klant(
+                        authMethod:  .apple,
+                        appleUserID: cred.user,
+                        voornaam:    cred.fullName?.givenName  ?? "",
+                        achternaam:  cred.fullName?.familyName ?? "",
+                        email:       cred.email ?? "",
+                        wachtwoord:  "",
+                        telefoon:    "",
+                        straat:      "",
+                        huisnummer:  "",
+                        postcode:    "",
+                        woonplaats:  ""
+                    )
+                    store.save(klant)
+                }
+            }
         case .failure(let err):
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."
@@ -537,6 +557,192 @@ struct InkField: View {
         .frame(maxWidth: width ?? .infinity, alignment: .leading)
         .background(Color(white: 0.07))
         .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+    }
+}
+
+// MARK: - Consent
+
+struct KlantConsentView: View {
+    @EnvironmentObject var store: KlantStore
+    let onLogout: () -> Void
+
+    @State private var consentFormulier = false
+    @State private var handtekening     = false
+    @State private var risicoNazorg     = false
+    @State private var bevestiging      = false
+    @State private var uitgevouwen: Int? = nil
+
+    private var alleAkkoord: Bool {
+        consentFormulier && handtekening && risicoNazorg && bevestiging
+    }
+
+    private let items: [(Int, String, String, String)] = [
+        (0, "doc.text.fill",       "Digitale consentformulieren",
+         "Ik heb het consentformulier voor de tattoo behandeling gelezen en ga akkoord met de inhoud hiervan."),
+        (1, "pencil.and.scribble", "Digitale handtekening",
+         "Ik bevestig met mijn akkoord dat ik dit formulier rechtsgeldig digitaal onderteken als vervanging van een fysieke handtekening."),
+        (2, "link",                "Risico-informatie & nazorg",
+         "Ik heb de informatie over de risico's van tatoeëren en de nazorginstructies gelezen en begrepen. Ik weet wat er van mij wordt verwacht na de behandeling."),
+        (3, "checkmark.shield.fill","Bevestiging",
+         "Ik bevestig dat ik volledig op de hoogte ben van alle risico's verbonden aan het tatoeëren en dat ik deze risico's vrijwillig en bewust accepteer."),
+    ]
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+
+                // ── Header ────────────────────────────────
+                VStack(spacing: 6) {
+                    Spacer().frame(height: 56)
+                    Text("CONSENT &")
+                        .font(.system(size: 26, weight: .black))
+                        .tracking(6)
+                        .foregroundColor(.white)
+                    Text("INFORMATIEPLICHT")
+                        .font(.system(size: 26, weight: .black))
+                        .tracking(6)
+                        .foregroundColor(.white)
+                    Spacer().frame(height: 8)
+                    Text("Lees elk punt en vink het aan om verder te gaan")
+                        .font(.system(size: 11))
+                        .tracking(1.5)
+                        .foregroundColor(Color(white: 0.4))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+
+                Spacer().frame(height: 32)
+
+                // ── Consent kaarten ───────────────────────
+                ScrollView {
+                    VStack(spacing: 10) {
+                        consentKaart(index: 0, binding: $consentFormulier)
+                        consentKaart(index: 1, binding: $handtekening)
+                        consentKaart(index: 2, binding: $risicoNazorg)
+                        consentKaart(index: 3, binding: $bevestiging)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 32)
+                }
+
+                // ── Bevestig knop ─────────────────────────
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(Color(white: 0.1))
+                        .frame(height: 1)
+
+                    Button(action: { if alleAkkoord { store.saveConsent() } }) {
+                        HStack {
+                            Spacer()
+                            Text("IK GA AKKOORD")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(4)
+                                .foregroundColor(alleAkkoord ? .black : Color(white: 0.3))
+                            Spacer()
+                        }
+                        .frame(height: 56)
+                        .background(alleAkkoord ? Color.white : Color(white: 0.12))
+                    }
+                    .disabled(!alleAkkoord)
+                    .animation(.easeInOut(duration: 0.2), value: alleAkkoord)
+
+                    Button(action: { store.logout(); onLogout() }) {
+                        Text("UITLOGGEN")
+                            .font(.system(size: 10))
+                            .tracking(3)
+                            .foregroundColor(Color(white: 0.25))
+                    }
+                    .padding(.vertical, 14)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func consentKaart(index: Int, binding: Binding<Bool>) -> some View {
+        let (i, icoon, titel, tekst) = items[index]
+        let open = uitgevouwen == i
+
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                uitgevouwen = open ? nil : i
+            }
+        }) {
+            VStack(spacing: 0) {
+                // ── Rij ──
+                HStack(spacing: 14) {
+                    Image(systemName: icoon)
+                        .font(.system(size: 18))
+                        .foregroundColor(binding.wrappedValue ? .white : Color(white: 0.4))
+                        .frame(width: 24)
+
+                    Text(titel)
+                        .font(.system(size: 13, weight: .semibold))
+                        .tracking(1)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Vinkje
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(binding.wrappedValue ? Color.white : Color(white: 0.3), lineWidth: 1.5)
+                            .frame(width: 22, height: 22)
+                        if binding.wrappedValue {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+
+                // ── Uitgevouwen tekst ──
+                if open {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Rectangle()
+                            .fill(Color(white: 0.15))
+                            .frame(height: 1)
+
+                        Text(tekst)
+                            .font(.system(size: 12))
+                            .tracking(0.3)
+                            .foregroundColor(Color(white: 0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 16)
+
+                        // Akkoord knop in kaart
+                        Button(action: {
+                            binding.wrappedValue = true
+                            withAnimation { uitgevouwen = nil }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: binding.wrappedValue ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 13))
+                                Text(binding.wrappedValue ? "Akkoord" : "Klik om akkoord te gaan")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .tracking(1)
+                            }
+                            .foregroundColor(binding.wrappedValue ? Color(white: 0.5) : .white)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                        .disabled(binding.wrappedValue)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(binding.wrappedValue ? Color(white: 0.09) : Color(white: 0.07))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(binding.wrappedValue ? Color(white: 0.3) : Color(white: 0.12), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

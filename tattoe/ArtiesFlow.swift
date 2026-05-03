@@ -106,6 +106,17 @@ struct ArtiesLoginView: View {
                 }
                 .padding(.bottom, 40)
             }
+
+            if store.isCheckingCloud {
+                Color.black.opacity(0.7).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    ProgressView().tint(.white).scaleEffect(1.2)
+                    Text("ACCOUNT OPHALEN…")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(3)
+                        .foregroundColor(Color(white: 0.5))
+                }
+            }
         }
         .fullScreenCover(isPresented: $showEmailRegister) {
             ArtiesEmailRegisterView(onLogout: onLogout)
@@ -117,22 +128,27 @@ struct ArtiesLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
-            let arties = Arties(
-                authMethod:    .apple,
-                appleUserID:   cred.user,
-                voornaam:      cred.fullName?.givenName  ?? "",
-                achternaam:    cred.fullName?.familyName ?? "",
-                email:         cred.email ?? "",
-                wachtwoord:    "",
-                kunstnaam:     "",
-                specialisatie: "",
-                telefoon:      "",
-                straat:        "",
-                huisnummer:    "",
-                postcode:      "",
-                woonplaats:    ""
-            )
-            store.save(arties)
+            Task {
+                await store.checkCloud(appleUserID: cred.user)
+                if !store.isLoggedIn {
+                    let arties = Arties(
+                        authMethod:    .apple,
+                        appleUserID:   cred.user,
+                        voornaam:      cred.fullName?.givenName  ?? "",
+                        achternaam:    cred.fullName?.familyName ?? "",
+                        email:         cred.email ?? "",
+                        wachtwoord:    "",
+                        kunstnaam:     "",
+                        specialisatie: "",
+                        telefoon:      "",
+                        straat:        "",
+                        huisnummer:    "",
+                        postcode:      "",
+                        woonplaats:    ""
+                    )
+                    store.save(arties)
+                }
+            }
         case .failure(let err):
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."
