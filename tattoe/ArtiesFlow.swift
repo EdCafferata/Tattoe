@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import PhotosUI
 
 // MARK: - Flow orchestrator
 
@@ -113,6 +114,16 @@ struct ArtiesLoginView: View {
 
                 Spacer()
 
+                #if DEBUG
+                Button(action: devInloggen) {
+                    Text("DEV: DIRECT INLOGGEN")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(2)
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                }
+                .padding(.bottom, 8)
+                #endif
+
                 Button(action: onLogout) {
                     HStack(spacing: 8) {
                         Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
@@ -143,6 +154,24 @@ struct ArtiesLoginView: View {
                 .environmentObject(store)
         }
     }
+
+    #if DEBUG
+    private func devInloggen() {
+        let testArties = Arties(
+            authMethod: .email, appleUserID: "",
+            voornaam: "Jim", achternaam: "Orie",
+            email: "jim@dragontattoo.nl", wachtwoord: "test1234",
+            kunstnaam: "Jim Orie", specialisatie: "Realism",
+            telefoon: "0612345678", straat: "Kalverstraat", huisnummer: "1",
+            postcode: "1012NX", woonplaats: "Amsterdam",
+            shopEmail: "", bio: "Tattoo artiest gespecialiseerd in realism en blackwork.",
+            stijlen: ["Realism", "Blackwork", "Fineline"], jarenervaring: 8,
+            instagram: "https://www.instagram.com/jimorie/",
+            facebook: "", pinterest: "", tiktok: "", website: "https://www.dragontattoo.nl"
+        )
+        store.save(testArties)
+    }
+    #endif
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
         switch result {
@@ -229,6 +258,21 @@ struct ArtiesEmailLoginView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
+
+                #if DEBUG
+                Spacer().frame(height: 20)
+                Button(action: { email = "jim@dragontattoo.nl"; wachtwoord = "test1234" }) {
+                    Text("DEV: INVULLEN & INLOGGEN")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(2)
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(Color(white: 0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                #endif
 
                 Spacer()
             }
@@ -333,7 +377,24 @@ struct ArtiesEmailRegisterView: View {
                         .tracking(2)
                         .foregroundColor(Color(white: 0.4))
 
+                    Spacer().frame(height: 20)
+
+                    #if DEBUG
+                    Button(action: devVulIn) {
+                        Text("DEV: VELDEN INVULLEN")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(2)
+                            .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity)
+                            .background(Color(white: 0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .padding(.horizontal, 24)
+                    Spacer().frame(height: 20)
+                    #else
                     Spacer().frame(height: 36)
+                    #endif
 
                     // ── Sectie: Account ──────────────────
                     sectionLabel("ACCOUNT")
@@ -494,6 +555,23 @@ struct ArtiesEmailRegisterView: View {
         .padding(.horizontal, 28)
         .padding(.bottom, 8)
     }
+
+    #if DEBUG
+    private func devVulIn() {
+        voornaam      = "Jim"
+        achternaam    = "Orie"
+        email         = "jim@dragontattoo.nl"
+        wachtwoord    = "test1234"
+        bevestig      = "test1234"
+        kunstnaam     = "Jim Orie"
+        specialisatie = "Realism"
+        telefoon      = "0612345678"
+        straat        = "Kalverstraat"
+        huisnummer    = "1"
+        postcode      = "1012NX"
+        woonplaats    = "Amsterdam"
+    }
+    #endif
 
     private func registreer() {
         fout = nil; focus = nil
@@ -882,30 +960,125 @@ struct ArtiesDashboardView: View {
 
     @State private var showBewerken = false
 
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Spacer()
-                Text("WELKOM TERUG")
-                    .font(.system(size: 28, weight: .black))
-                    .tracking(6)
-                    .foregroundColor(.white)
-                Spacer().frame(height: 8)
-                if let a = store.arties {
-                    Text(a.kunstnaam.isEmpty ? "\(a.voornaam) \(a.achternaam)" : a.kunstnaam)
-                        .font(.system(size: 14))
-                        .tracking(2)
-                        .foregroundColor(Color(white: 0.45))
-                }
-                Spacer().frame(height: 60)
-                Text("Hier komt het artiest scherm")
-                    .font(.system(size: 12))
-                    .tracking(2)
-                    .foregroundColor(Color(white: 0.3))
-                Spacer()
+    private let portfolioColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
 
-                // AANPASSEN + UITLOGGEN naast elkaar
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    profielHeader
+
+                    if let a = store.arties {
+                        if !a.bio.isEmpty {
+                            dashSection("OVER MIJ") {
+                                Text(a.bio)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.75))
+                                    .lineSpacing(4)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        if !a.stijlen.isEmpty {
+                            dashSection("STIJLEN") {
+                                stijlenChips(a.stijlen)
+                            }
+                        }
+                        if a.jarenervaring > 0 {
+                            dashSection("ERVARING") {
+                                HStack(alignment: .lastTextBaseline, spacing: 4) {
+                                    Text("\(a.jarenervaring)")
+                                        .font(.system(size: 28, weight: .black))
+                                        .foregroundColor(.white)
+                                    Text("jaar")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Color(white: 0.4))
+                                }
+                            }
+                        }
+                        let links = socialLinks(a)
+                        if !links.isEmpty {
+                            dashSection("SOCIAL & WEB") {
+                                VStack(spacing: 12) {
+                                    ForEach(links, id: \.label) { link in
+                                        socialRow(link)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let filled = store.portfolioFotos.enumerated().filter { $0.element != nil }
+                    if !filled.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("PORTFOLIO")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(4)
+                                .foregroundColor(Color(white: 0.3))
+                                .padding(.horizontal, 24)
+
+                            LazyVGrid(columns: portfolioColumns, spacing: 2) {
+                                ForEach(0..<9, id: \.self) { i in
+                                    if let data = store.portfolioFotos[i],
+                                       let img = UIImage(data: data) {
+                                        Image(uiImage: img)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(maxWidth: .infinity)
+                                            .aspectRatio(1, contentMode: .fill)
+                                            .clipped()
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 20)
+                    }
+
+                    let filledVoorbeelden = store.voorbeeldFotos.enumerated().filter { $0.element != nil }
+                    if !filledVoorbeelden.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("VOORBEELD TATTOO'S")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(4)
+                                .foregroundColor(Color(white: 0.3))
+                                .padding(.horizontal, 24)
+                            LazyVGrid(columns: portfolioColumns, spacing: 2) {
+                                ForEach(0..<9, id: \.self) { i in
+                                    if let data = store.voorbeeldFotos[i], let img = UIImage(data: data) {
+                                        Image(uiImage: img)
+                                            .resizable().scaledToFill()
+                                            .frame(maxWidth: .infinity)
+                                            .aspectRatio(1, contentMode: .fill)
+                                            .clipped()
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 20)
+                    }
+
+                    if isProfielLeeg {
+                        Spacer().frame(height: 40)
+                        Text("Vul je profiel in via AANPASSEN")
+                            .font(.system(size: 12))
+                            .tracking(1)
+                            .foregroundColor(Color(white: 0.25))
+                    }
+
+                    Spacer().frame(height: 120)
+                }
+            }
+
+            // Vaste knoppen onderaan
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.black.opacity(0), .black],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: 24)
                 HStack(spacing: 12) {
                     Button(action: { showBewerken = true }) {
                         Text("AANPASSEN")
@@ -916,12 +1089,8 @@ struct ArtiesDashboardView: View {
                             .frame(height: 44)
                             .background(Color(white: 0.12))
                             .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color(white: 0.25), lineWidth: 1)
-                            )
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.25), lineWidth: 1))
                     }
-
                     Button(action: { store.logout(); onLogout() }) {
                         Text("UITLOGGEN")
                             .font(.system(size: 12, weight: .semibold))
@@ -931,19 +1100,1064 @@ struct ArtiesDashboardView: View {
                             .frame(height: 44)
                             .background(Color(white: 0.12))
                             .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color(white: 0.25), lineWidth: 1)
-                            )
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.25), lineWidth: 1))
                     }
                 }
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 40)
+                .background(Color.black)
             }
         }
         .fullScreenCover(isPresented: $showBewerken) {
-            ArtiesNAWView(onLogout: onLogout)
+            ArtiesProfielBewerkenView(onLogout: onLogout)
                 .environmentObject(store)
         }
+    }
+
+    // MARK: Header
+
+    @ViewBuilder
+    private var profielHeader: some View {
+        VStack(spacing: 12) {
+            if let data = store.profielFotoData, let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.1))
+                        .frame(width: 100, height: 100)
+                        .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 44))
+                        .foregroundColor(Color(white: 0.2))
+                }
+            }
+
+            if let a = store.arties {
+                Text(a.kunstnaam.isEmpty ? "\(a.voornaam) \(a.achternaam)" : a.kunstnaam)
+                    .font(.system(size: 22, weight: .black))
+                    .tracking(3)
+                    .foregroundColor(.white)
+
+                if !a.specialisatie.isEmpty {
+                    Text(a.specialisatie.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(3)
+                        .foregroundColor(Color(white: 0.4))
+                }
+
+                if !a.woonplaats.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(white: 0.3))
+                        Text(a.woonplaats)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(white: 0.35))
+                    }
+                }
+            }
+        }
+        .padding(.top, 52)
+        .padding(.bottom, 32)
+    }
+
+    // MARK: Section wrapper
+
+    @ViewBuilder
+    private func dashSection<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold))
+                .tracking(4)
+                .foregroundColor(Color(white: 0.3))
+            content()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        Rectangle()
+            .fill(Color(white: 0.1))
+            .frame(height: 1)
+    }
+
+    @ViewBuilder
+    private func stijlenChips(_ stijlen: [String]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(stijlen, id: \.self) { s in
+                    Text(s)
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(1)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(white: 0.12))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color(white: 0.25), lineWidth: 1))
+                }
+            }
+        }
+    }
+
+    private struct SocialLink: Identifiable {
+        let id = UUID()
+        let label: String
+        let icon:  String
+        let url:   String
+    }
+
+    private func socialLinks(_ a: Arties) -> [SocialLink] {
+        var out: [SocialLink] = []
+        if !a.instagram.isEmpty { out.append(.init(label: "Instagram", icon: "camera",    url: a.instagram)) }
+        if !a.facebook.isEmpty  { out.append(.init(label: "Facebook",  icon: "person.2",  url: a.facebook)) }
+        if !a.pinterest.isEmpty { out.append(.init(label: "Pinterest", icon: "pin",       url: a.pinterest)) }
+        if !a.tiktok.isEmpty    { out.append(.init(label: "TikTok",    icon: "music.note",url: a.tiktok)) }
+        if !a.website.isEmpty   { out.append(.init(label: "Website",   icon: "globe",     url: a.website)) }
+        return out
+    }
+
+    @ViewBuilder
+    private func socialRow(_ link: SocialLink) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: link.icon)
+                .font(.system(size: 14))
+                .foregroundColor(Color(white: 0.45))
+                .frame(width: 20)
+            Text(link.url)
+                .font(.system(size: 13))
+                .foregroundColor(Color(white: 0.7))
+                .lineLimit(1)
+            Spacer()
+            Text(link.label.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .tracking(2)
+                .foregroundColor(Color(white: 0.3))
+        }
+    }
+
+    private var isProfielLeeg: Bool {
+        guard let a = store.arties else { return true }
+        return a.bio.isEmpty && a.stijlen.isEmpty && a.jarenervaring == 0 &&
+               a.instagram.isEmpty && a.facebook.isEmpty && a.pinterest.isEmpty &&
+               a.tiktok.isEmpty && a.website.isEmpty &&
+               store.portfolioFotos.allSatisfy { $0 == nil } &&
+               store.profielFotoData == nil
+    }
+}
+
+// MARK: - Profiel bewerken
+
+struct ArtiesProfielBewerkenView: View {
+    @EnvironmentObject var store: ArtiesStore
+    let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    // Foto picker state
+    enum FotoDoel { case profiel; case portfolio(Int); case voorbeeld(Int) }
+    @State private var fotoDoel:    FotoDoel? = nil
+    @State private var pickerItem:  PhotosPickerItem? = nil
+
+    // Bewerkbare velden
+    @State private var bio           = ""
+    @State private var stijlInput    = ""
+    @State private var stijlen:       [String] = []
+    @State private var jarenervaring = 0
+    @State private var instagram     = ""
+    @State private var facebook      = ""
+    @State private var pinterest     = ""
+    @State private var tiktok        = ""
+    @State private var website       = ""
+
+    @State private var bezig = false
+
+    // URL importer
+    @State private var importURL          = ""
+    @State private var importBezig        = false
+    @State private var importFout:        String? = nil
+    @State private var importVoorbeeld:   ImportResultaat? = nil
+    @State private var showImportPreview  = false
+
+    private let portfolioColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 60)
+
+                    // URL importer
+                    sectionLabel("IMPORTEER VAN WEBSITE")
+                    urlImportSection
+                    Spacer().frame(height: 28)
+
+                    // Profielfoto
+                    profielFotoKnop
+                    Spacer().frame(height: 32)
+
+                    // Bio
+                    sectionLabel("BIO")
+                    bioEditor
+                    Spacer().frame(height: 24)
+
+                    // Stijlen
+                    sectionLabel("STIJLEN")
+                    stijlenEditor
+                    Spacer().frame(height: 24)
+
+                    // Portfolio
+                    sectionLabel("PORTFOLIO (MAX 9 FOTO'S)")
+                    LazyVGrid(columns: portfolioColumns, spacing: 2) {
+                        ForEach(0..<9, id: \.self) { portfolioCell(index: $0) }
+                    }
+                    .padding(.horizontal, 24)
+                    Spacer().frame(height: 24)
+
+                    // Voorbeeld foto's
+                    sectionLabel("VOORBEELD TATTOO'S (MAX 9)")
+                    LazyVGrid(columns: portfolioColumns, spacing: 2) {
+                        ForEach(0..<9, id: \.self) { voorbeeldCell(index: $0) }
+                    }
+                    .padding(.horizontal, 24)
+                    Spacer().frame(height: 24)
+
+                    // Jaren ervaring
+                    sectionLabel("JAREN ERVARING")
+                    ervaringStepper
+                    Spacer().frame(height: 24)
+
+                    // Social
+                    sectionLabel("SOCIAL MEDIA & WEB")
+                    VStack(spacing: 1) {
+                        InkField("INSTAGRAM URL", text: $instagram, keyboard: .URL)
+                        InkField("FACEBOOK URL",  text: $facebook,  keyboard: .URL)
+                        InkField("PINTEREST URL", text: $pinterest, keyboard: .URL)
+                        InkField("TIKTOK URL",    text: $tiktok,    keyboard: .URL)
+                        InkField("WEBSITE URL",   text: $website,   keyboard: .URL)
+                    }
+                    .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 100)
+                }
+            }
+
+            // Vaste OPSLAAN knop
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: opslaan) {
+                    Group {
+                        if bezig {
+                            ProgressView().tint(.black)
+                        } else {
+                            Text("OPSLAAN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(5)
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(bezig)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+        .onAppear { prefill() }
+        .photosPicker(
+            isPresented: Binding(
+                get: { fotoDoel != nil },
+                set: { if !$0 { fotoDoel = nil } }
+            ),
+            selection: $pickerItem,
+            matching: .images
+        )
+        .onChange(of: pickerItem) { _, item in
+            guard let item, let doel = fotoDoel else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    switch doel {
+                    case .profiel:           store.saveProfielFoto(data)
+                    case .portfolio(let i):  store.savePortfolioFoto(data, at: i)
+                    case .voorbeeld(let i):  store.saveVoorbeeldFoto(data, at: i)
+                    }
+                }
+                pickerItem = nil
+                fotoDoel   = nil
+            }
+        }
+        .sheet(isPresented: $showImportPreview) {
+            if let r = importVoorbeeld {
+                ImportPreviewSheet(resultaat: r) { gekozen in
+                    if !gekozen.bio.isEmpty       { bio       = gekozen.bio }
+                    if !gekozen.instagram.isEmpty { instagram = gekozen.instagram }
+                    if !gekozen.facebook.isEmpty  { facebook  = gekozen.facebook }
+                    if !gekozen.pinterest.isEmpty { pinterest = gekozen.pinterest }
+                    if !gekozen.tiktok.isEmpty    { tiktok    = gekozen.tiktok }
+                    if !gekozen.website.isEmpty   { website   = gekozen.website }
+                    for s in gekozen.stijlen where !stijlen.contains(s) { stijlen.append(s) }
+
+                    // Foto's downloaden op de achtergrond
+                    Task {
+                        if !gekozen.profielFotoURL.isEmpty,
+                           let data = await downloadImage(gekozen.profielFotoURL) {
+                            store.saveProfielFoto(data)
+                        }
+                        var pSlot = 0
+                        for url in gekozen.portfolioFotoURLs {
+                            while pSlot < 9 && store.portfolioFotos[pSlot] != nil { pSlot += 1 }
+                            guard pSlot < 9 else { break }
+                            if let data = await downloadImage(url) { store.savePortfolioFoto(data, at: pSlot); pSlot += 1 }
+                        }
+                        var vSlot = 0
+                        for url in gekozen.voorbeeldFotoURLs {
+                            while vSlot < 9 && store.voorbeeldFotos[vSlot] != nil { vSlot += 1 }
+                            guard vSlot < 9 else { break }
+                            if let data = await downloadImage(url) { store.saveVoorbeeldFoto(data, at: vSlot); vSlot += 1 }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Subviews
+
+    @ViewBuilder
+    private var profielFotoKnop: some View {
+        VStack(spacing: 10) {
+            Button(action: { fotoDoel = .profiel }) {
+                ZStack(alignment: .bottomTrailing) {
+                    if let data = store.profielFotoData, let img = UIImage(data: data) {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 100, height: 100)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(Color(white: 0.1))
+                                .frame(width: 100, height: 100)
+                                .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(Color(white: 0.2))
+                        }
+                    }
+                    ZStack {
+                        Circle().fill(Color.white).frame(width: 28, height: 28)
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.black)
+                    }
+                    .offset(x: 4, y: 4)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Text("PROFIELFOTO")
+                .font(.system(size: 9, weight: .bold))
+                .tracking(3)
+                .foregroundColor(Color(white: 0.35))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var bioEditor: some View {
+        ZStack(alignment: .topLeading) {
+            if bio.isEmpty {
+                Text("Vertel iets over jezelf als artiest…")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(white: 0.3))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 13)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $bio)
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .tint(.white)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(minHeight: 100)
+        }
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+        .padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private var stijlenEditor: some View {
+        VStack(spacing: 8) {
+            if !stijlen.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(stijlen, id: \.self) { stijl in
+                            HStack(spacing: 6) {
+                                Text(stijl)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .tracking(1)
+                                    .foregroundColor(.white)
+                                Button(action: { stijlen.removeAll { $0 == stijl } }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(Color(white: 0.5))
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color(white: 0.12))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color(white: 0.25), lineWidth: 1))
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+            HStack(spacing: 8) {
+                TextField("Voeg stijl toe (bijv. realism)", text: $stijlInput)
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                    .tint(.white)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.words)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Color(white: 0.07))
+                    .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                    .onSubmit { voegStijlToe() }
+                Button(action: voegStijlToe) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .disabled(stijlInput.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    @ViewBuilder
+    private var ervaringStepper: some View {
+        HStack {
+            Button(action: { if jarenervaring > 0 { jarenervaring -= 1 } }) {
+                Image(systemName: "minus")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color(white: 0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.2), lineWidth: 1))
+            }
+            Text("\(jarenervaring) jaar")
+                .font(.system(size: 18, weight: .black))
+                .tracking(2)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+            Button(action: { jarenervaring += 1 }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.black)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private func portfolioCell(index: Int) -> some View {
+        ZStack {
+            if let data = store.portfolioFotos[index], let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fill)
+                    .clipped()
+                    .overlay(alignment: .topTrailing) {
+                        Button(action: { store.removePortfolioFoto(at: index) }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                                .shadow(radius: 3)
+                        }
+                        .padding(6)
+                    }
+            } else {
+                Button(action: { fotoDoel = .portfolio(index) }) {
+                    Color(white: 0.07)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                        .overlay(
+                            Image(systemName: "plus")
+                                .font(.system(size: 22, weight: .light))
+                                .foregroundColor(Color(white: 0.3))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func voorbeeldCell(index: Int) -> some View {
+        ZStack {
+            if let data = store.voorbeeldFotos[index], let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable().scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fill)
+                    .clipped()
+                    .overlay(alignment: .topTrailing) {
+                        Button(action: { store.removeVoorbeeldFoto(at: index) }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                                .shadow(radius: 3)
+                        }
+                        .padding(6)
+                    }
+            } else {
+                Button(action: { fotoDoel = .voorbeeld(index) }) {
+                    Color(white: 0.07)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                        .overlay(
+                            Image(systemName: "plus")
+                                .font(.system(size: 22, weight: .light))
+                                .foregroundColor(Color(white: 0.3))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionLabel(_ text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(.system(size: 9, weight: .bold))
+                .tracking(4)
+                .foregroundColor(Color(white: 0.35))
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: Logic
+
+    private func prefill() {
+        guard let a = store.arties else { return }
+        bio           = a.bio
+        stijlen       = a.stijlen
+        jarenervaring = a.jarenervaring
+        instagram     = a.instagram
+        facebook      = a.facebook
+        pinterest     = a.pinterest
+        tiktok        = a.tiktok
+        website       = a.website
+    }
+
+    private func voegStijlToe() {
+        let s = stijlInput.trimmingCharacters(in: .whitespaces)
+        guard !s.isEmpty, !stijlen.contains(s) else { stijlInput = ""; return }
+        stijlen.append(s)
+        stijlInput = ""
+    }
+
+    private func opslaan() {
+        bezig = true
+        var a = store.arties ?? Arties(authMethod: .email, appleUserID: "", voornaam: "",
+                                       achternaam: "", email: "", wachtwoord: "", kunstnaam: "",
+                                       specialisatie: "", telefoon: "", straat: "", huisnummer: "",
+                                       postcode: "", woonplaats: "")
+        a.bio           = bio
+        a.stijlen       = stijlen
+        a.jarenervaring = jarenervaring
+        a.instagram     = instagram
+        a.facebook      = facebook
+        a.pinterest     = pinterest
+        a.tiktok        = tiktok
+        a.website       = website
+        store.save(a)
+        bezig = false
+        dismiss()
+    }
+
+    // MARK: URL importer UI
+
+    @ViewBuilder
+    private var urlImportSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TextField("https://www.jouwnaam.nl", text: $importURL)
+                    .font(.system(size: 14))
+                    .foregroundColor(.white)
+                    .tint(.white)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Color(white: 0.07))
+                    .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+
+                Button(action: { Task { await importeerURL() } }) {
+                    Group {
+                        if importBezig {
+                            ProgressView().tint(.black).scaleEffect(0.8)
+                        } else {
+                            Text("LADEN")
+                                .font(.system(size: 11, weight: .black))
+                                .tracking(2)
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(width: 64, height: 44)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .disabled(importBezig || importURL.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
+            if let fout = importFout {
+                Text(fout)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(red: 1, green: 0.3, blue: 0.3))
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: URL fetch + parse
+
+    private func importeerURL() async {
+        importFout = nil
+        var urlStr = importURL.trimmingCharacters(in: .whitespaces)
+        if !urlStr.hasPrefix("http") { urlStr = "https://" + urlStr }
+        guard let url = URL(string: urlStr) else { importFout = "Ongeldige URL."; return }
+
+        importBezig = true
+        defer { importBezig = false }
+
+        guard let (data, response) = try? await URLSession.shared.data(from: url) else {
+            importFout = "Kon de pagina niet laden."; return
+        }
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            importFout = "Pagina niet gevonden (fout \(http.statusCode)). Controleer de URL."; return
+        }
+        guard let html = String(data: data, encoding: .utf8)
+                      ?? String(data: data, encoding: .isoLatin1) else {
+            importFout = "Kon de pagina niet lezen."; return
+        }
+
+        let resultaat = parseHTML(html, baseURL: url)
+        if resultaat.isLeeg {
+            importFout = "Geen profielgegevens gevonden op deze pagina."
+        } else {
+            importVoorbeeld   = resultaat
+            showImportPreview = true
+        }
+    }
+
+    private func parseHTML(_ html: String, baseURL: URL) -> ImportResultaat {
+        let fotos = extractFotos(html, baseURL: baseURL)
+        return ImportResultaat(
+            bio:               extractMetaBeschrijving(html),
+            instagram:         extractSocialURL(html, domain: "instagram.com"),
+            facebook:          extractSocialURL(html, domain: "facebook.com"),
+            pinterest:         extractSocialURL(html, domain: "pinterest.com"),
+            tiktok:            extractSocialURL(html, domain: "tiktok.com"),
+            website:           (baseURL.scheme ?? "https") + "://" + (baseURL.host ?? ""),
+            stijlen:           extractStijlen(html),
+            profielFotoURL:    fotos.profiel,
+            portfolioFotoURLs: fotos.portfolio,
+            voorbeeldFotoURLs: fotos.voorbeelden
+        )
+    }
+
+    private func extractMetaBeschrijving(_ html: String) -> String {
+        let patronen = [
+            #"name=["']description["'][^>]+content=["']([^"']{15,})["']"#,
+            #"content=["']([^"']{15,})["'][^>]+name=["']description["']"#,
+            #"property=["']og:description["'][^>]+content=["']([^"']{15,})["']"#,
+            #"content=["']([^"']{15,})["'][^>]+property=["']og:description["']"#
+        ]
+        for patroon in patronen {
+            guard let regex = try? NSRegularExpression(pattern: patroon, options: .caseInsensitive),
+                  let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                  match.numberOfRanges > 1,
+                  let r = Range(match.range(at: 1), in: html) else { continue }
+            let result = stripHTML(String(html[r]))
+            if !result.isEmpty { return result }
+        }
+        // Fallback: eerste alinea met voldoende tekst
+        return extractEersteParagraaf(html)
+    }
+
+    private func extractEersteParagraaf(_ html: String) -> String {
+        // Verwijder script/style blokken zodat we geen code oppikken
+        var schoon = html
+        for tag in ["script", "style", "noscript"] {
+            let patroon = "(?i)<\(tag)[^>]*>[\\s\\S]*?</\(tag)>"
+            schoon = schoon.replacingOccurrences(of: patroon, with: "", options: .regularExpression)
+        }
+        let patroon = #"<p[^>]*>([\s\S]*?)</p>"#
+        guard let rx = try? NSRegularExpression(pattern: patroon, options: .caseInsensitive) else { return "" }
+        let matches = rx.matches(in: schoon, range: NSRange(schoon.startIndex..., in: schoon))
+        for m in matches {
+            guard m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: schoon) else { continue }
+            let tekst = stripHTML(String(schoon[r]))
+            // Sla regels over die eruitzien als code
+            if tekst.count >= 80 && !tekst.contains("{") && !tekst.contains("function") {
+                return String(tekst.prefix(600))
+            }
+        }
+        return ""
+    }
+
+    private func stripHTML(_ raw: String) -> String {
+        raw.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "&amp;",  with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;",  with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&lt;",   with: "<")
+            .replacingOccurrences(of: "&gt;",   with: ">")
+            .replacingOccurrences(of: #"\s+"#,  with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func extractSocialURL(_ html: String, domain: String) -> String {
+        let escaped = NSRegularExpression.escapedPattern(for: domain)
+        let patroon = "https?://(?:www\\.)?\(escaped)/[\\w@._/%-]+"
+        guard let regex = try? NSRegularExpression(pattern: patroon, options: .caseInsensitive),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let r = Range(match.range, in: html) else { return "" }
+        return String(html[r]).replacingOccurrences(of: "\"", with: "")
+    }
+
+    private static let bekendeStijlen = [
+        "traditional", "neo-traditional", "neotraditional", "realism", "realistic",
+        "blackwork", "watercolor", "watercolour", "geometric", "tribal", "japanese",
+        "new school", "newschool", "illustrative", "dotwork", "trash polka",
+        "fine line", "fineline", "biomechanical", "lettering", "portrait",
+        "minimalist", "mandala", "celtic", "polynesian", "abstract", "surrealism",
+        "sketch", "chicano", "old school", "oldschool"
+    ]
+
+    private func extractStijlen(_ html: String) -> [String] {
+        let lower = html.lowercased()
+        return Self.bekendeStijlen.filter { lower.contains($0) }
+    }
+
+    private func extractFotos(_ html: String, baseURL: URL) -> (profiel: String, portfolio: [String], voorbeelden: [String]) {
+        var profiel = extractOGImage(html, baseURL: baseURL)
+        var alle    = extractPortfolioImages(html, baseURL: baseURL, skip: profiel)
+        if profiel.isEmpty && !alle.isEmpty { profiel = alle.removeFirst() }
+        let portfolio   = Array(alle.prefix(9))
+        let voorbeelden = Array(alle.dropFirst(9).prefix(9))
+        return (profiel, portfolio, voorbeelden)
+    }
+
+    private func extractOGImage(_ html: String, baseURL: URL) -> String {
+        let patronen = [
+            #"property=["']og:image["'][^>]+content=["']([^"']+)["']"#,
+            #"content=["']([^"']+)["'][^>]+property=["']og:image["']"#
+        ]
+        for p in patronen {
+            guard let rx = try? NSRegularExpression(pattern: p, options: .caseInsensitive),
+                  let m  = rx.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                  m.numberOfRanges > 1,
+                  let r  = Range(m.range(at: 1), in: html) else { continue }
+            let url = String(html[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !url.isEmpty { return absoluteURL(url, base: baseURL) }
+        }
+        return ""
+    }
+
+    private func extractPortfolioImages(_ html: String, baseURL: URL, skip: String) -> [String] {
+        let patroon = #"(?:src|data-src)=["']([^"']*\.(?:jpg|jpeg|png|webp))["']"#
+        guard let rx = try? NSRegularExpression(pattern: patroon, options: .caseInsensitive) else { return [] }
+        let matches = rx.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        let skipWoorden = ["logo", "icon", "hand_", "avatar", "banner", "sprite", "bg", "background", "pixel", "track"]
+        var urls: [String] = []
+        for m in matches {
+            guard m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: html) else { continue }
+            let src   = String(html[r])
+            let lower = src.lowercased()
+            if skipWoorden.contains(where: { lower.contains($0) }) { continue }
+            let abs = absoluteURL(src, base: baseURL)
+            if abs != skip && !urls.contains(abs) { urls.append(abs) }
+            if urls.count >= 18 { break }
+        }
+        return urls
+    }
+
+    private func absoluteURL(_ src: String, base: URL) -> String {
+        if src.hasPrefix("http")  { return src }
+        if src.hasPrefix("//")    { return (base.scheme ?? "https") + ":" + src }
+        if src.hasPrefix("/")     { return (base.scheme ?? "https") + "://" + (base.host ?? "") + src }
+        return base.deletingLastPathComponent().appendingPathComponent(src).absoluteString
+    }
+
+    private func downloadImage(_ urlStr: String) async -> Data? {
+        guard let url = URL(string: urlStr) else { return nil }
+        return try? await URLSession.shared.data(from: url).0
+    }
+}
+
+// MARK: - Import resultaat model
+
+struct ImportResultaat {
+    var bio:               String
+    var instagram:         String
+    var facebook:          String
+    var pinterest:         String
+    var tiktok:            String
+    var website:           String
+    var stijlen:           [String]
+    var profielFotoURL:     String   = ""
+    var portfolioFotoURLs:  [String] = []
+    var voorbeeldFotoURLs:  [String] = []
+
+    var isLeeg: Bool {
+        bio.isEmpty && instagram.isEmpty && facebook.isEmpty &&
+        pinterest.isEmpty && tiktok.isEmpty && stijlen.isEmpty &&
+        profielFotoURL.isEmpty && portfolioFotoURLs.isEmpty && voorbeeldFotoURLs.isEmpty
+    }
+}
+
+// MARK: - Import preview sheet
+
+struct ImportPreviewSheet: View {
+    let resultaat:   ImportResultaat
+    let onToepassen: (ImportResultaat) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var applyBio       = true
+    @State private var applyInstagram = true
+    @State private var applyFacebook  = true
+    @State private var applyPinterest = true
+    @State private var applyTiktok    = true
+    @State private var applyWebsite   = true
+    @State private var applyStijlen   = true
+    @State private var applyFotos     = true
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer().frame(height: 60)
+
+                    Text("GEVONDEN GEGEVENS")
+                        .font(.system(size: 22, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 6)
+
+                    Text("Selecteer wat je wil overnemen")
+                        .font(.system(size: 12))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.4))
+                        .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 32)
+
+                    VStack(spacing: 1) {
+                        if !resultaat.bio.isEmpty {
+                            importRij("BIO", waarde: resultaat.bio, aan: $applyBio)
+                        }
+                        if !resultaat.instagram.isEmpty {
+                            importRij("INSTAGRAM", waarde: resultaat.instagram, aan: $applyInstagram)
+                        }
+                        if !resultaat.facebook.isEmpty {
+                            importRij("FACEBOOK", waarde: resultaat.facebook, aan: $applyFacebook)
+                        }
+                        if !resultaat.pinterest.isEmpty {
+                            importRij("PINTEREST", waarde: resultaat.pinterest, aan: $applyPinterest)
+                        }
+                        if !resultaat.tiktok.isEmpty {
+                            importRij("TIKTOK", waarde: resultaat.tiktok, aan: $applyTiktok)
+                        }
+                        if !resultaat.website.isEmpty {
+                            importRij("WEBSITE", waarde: resultaat.website, aan: $applyWebsite)
+                        }
+                        if !resultaat.stijlen.isEmpty {
+                            importRij("STIJLEN", waarde: resultaat.stijlen.joined(separator: ", "), aan: $applyStijlen)
+                        }
+                        if !resultaat.profielFotoURL.isEmpty || !resultaat.portfolioFotoURLs.isEmpty {
+                            fotoRij
+                        }
+                    }
+                    .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 100)
+                }
+            }
+
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: toepassen) {
+                    Text("OVERNEMEN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(4)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+    }
+
+    @ViewBuilder
+    private var fotoRij: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Toggle("", isOn: $applyFotos)
+                .toggleStyle(SwitchToggleStyle(tint: Color(white: 0.9)))
+                .labelsHidden()
+                .scaleEffect(0.8)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("FOTO'S")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(3)
+                    .foregroundColor(Color(white: 0.4))
+                let totaal = (resultaat.profielFotoURL.isEmpty ? 0 : 1) + resultaat.portfolioFotoURLs.count
+                Text("\(totaal) foto\(totaal == 1 ? "" : "'s") gevonden")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white)
+
+                // Thumbnail strip
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        if !resultaat.profielFotoURL.isEmpty,
+                           let url = URL(string: resultaat.profielFotoURL) {
+                            AsyncImage(url: url) { img in
+                                img.resizable().scaledToFill()
+                            } placeholder: {
+                                Color(white: 0.12)
+                            }
+                            .frame(width: 56, height: 56)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color(white: 0.3), lineWidth: 1))
+                        }
+                        ForEach(resultaat.portfolioFotoURLs.prefix(9), id: \.self) { urlStr in
+                            if let url = URL(string: urlStr) {
+                                AsyncImage(url: url) { img in
+                                    img.resizable().scaledToFill()
+                                } placeholder: {
+                                    Color(white: 0.12)
+                                }
+                                .frame(width: 56, height: 56)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func importRij(_ label: String, waarde: String, aan: Binding<Bool>) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Toggle("", isOn: aan)
+                .toggleStyle(SwitchToggleStyle(tint: Color(white: 0.9)))
+                .labelsHidden()
+                .scaleEffect(0.8)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label)
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(3)
+                    .foregroundColor(Color(white: 0.4))
+                Text(waarde)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white)
+                    .lineLimit(4)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+    }
+
+    private func toepassen() {
+        var r = resultaat
+        if !applyBio       { r.bio               = "" }
+        if !applyInstagram { r.instagram          = "" }
+        if !applyFacebook  { r.facebook           = "" }
+        if !applyPinterest { r.pinterest          = "" }
+        if !applyTiktok    { r.tiktok             = "" }
+        if !applyWebsite   { r.website            = "" }
+        if !applyStijlen   { r.stijlen            = [] }
+        if !applyFotos     { r.profielFotoURL     = ""; r.portfolioFotoURLs = [] }
+        onToepassen(r)
+        dismiss()
     }
 }

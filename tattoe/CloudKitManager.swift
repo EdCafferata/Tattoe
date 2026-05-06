@@ -176,6 +176,63 @@ final class CloudKitManager {
     }
 
     // ─────────────────────────────────────────────
+    // MARK: - Arties foto's (private DB, CKAsset)
+    // ─────────────────────────────────────────────
+
+    func saveArtiestFotos(arties: Arties, profiel: Data?, portfolio: [Data?], voorbeelden: [Data?]) async {
+        let id = CKRecord.ID(recordName: recordName("arties", arties.appleUserID, arties.email))
+        guard let record = try? await db.record(for: id) else { return }
+
+        let tmp = FileManager.default.temporaryDirectory
+
+        if let data = profiel {
+            let url = tmp.appendingPathComponent("profiel_\(arties.email).jpg")
+            if (try? data.write(to: url)) != nil { record["profielFoto"] = CKAsset(fileURL: url) }
+        }
+
+        for i in 0..<9 {
+            if let data = portfolio[i] {
+                let url = tmp.appendingPathComponent("portf_\(arties.email)_\(i).jpg")
+                if (try? data.write(to: url)) != nil { record["portf\(i)"] = CKAsset(fileURL: url) }
+            } else {
+                record["portf\(i)"] = nil as CKRecordValueProtocol?
+            }
+            if let data = voorbeelden[i] {
+                let url = tmp.appendingPathComponent("voorb_\(arties.email)_\(i).jpg")
+                if (try? data.write(to: url)) != nil { record["voorb\(i)"] = CKAsset(fileURL: url) }
+            } else {
+                record["voorb\(i)"] = nil as CKRecordValueProtocol?
+            }
+        }
+
+        try? await db.save(record)
+    }
+
+    func fetchArtiestFotos(arties: Arties) async -> (profiel: Data?, portfolio: [Data?], voorbeelden: [Data?]) {
+        let id = CKRecord.ID(recordName: recordName("arties", arties.appleUserID, arties.email))
+        guard let record = try? await db.record(for: id) else {
+            return (nil, Array(repeating: nil, count: 9), Array(repeating: nil, count: 9))
+        }
+
+        let profiel: Data? = (record["profielFoto"] as? CKAsset).flatMap {
+            guard let url = $0.fileURL else { return nil }
+            return try? Data(contentsOf: url)
+        }
+
+        let portfolio: [Data?] = (0..<9).map { i in
+            guard let asset = record["portf\(i)"] as? CKAsset, let url = asset.fileURL else { return nil }
+            return try? Data(contentsOf: url)
+        }
+
+        let voorbeelden: [Data?] = (0..<9).map { i in
+            guard let asset = record["voorb\(i)"] as? CKAsset, let url = asset.fileURL else { return nil }
+            return try? Data(contentsOf: url)
+        }
+
+        return (profiel, portfolio, voorbeelden)
+    }
+
+    // ─────────────────────────────────────────────
     // MARK: - Shop (private DB)
     // ─────────────────────────────────────────────
 

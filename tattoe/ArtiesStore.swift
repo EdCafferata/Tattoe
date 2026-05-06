@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 struct Arties: Codable {
     var authMethod:    AuthMethod
@@ -15,7 +16,6 @@ struct Arties: Codable {
     var huisnummer:    String
     var postcode:      String
     var woonplaats:    String
-    // Profiel-uitbreiding
     var shopEmail:     String = ""
     var bio:           String = ""
     var stijlen:       [String] = []
@@ -26,7 +26,6 @@ struct Arties: Codable {
     var tiktok:        String = ""
     var website:       String = ""
 
-    // Volledige memberwise init
     init(authMethod: AuthMethod, appleUserID: String, voornaam: String, achternaam: String,
          email: String, wachtwoord: String, kunstnaam: String, specialisatie: String,
          telefoon: String, straat: String, huisnummer: String, postcode: String,
@@ -58,7 +57,6 @@ struct Arties: Codable {
         self.website       = website
     }
 
-    // Backward-compatible decode: nieuwe velden zijn optioneel
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         authMethod    = try c.decode(AuthMethod.self, forKey: .authMethod)
@@ -74,23 +72,26 @@ struct Arties: Codable {
         huisnummer    = try c.decode(String.self,     forKey: .huisnummer)
         postcode      = try c.decode(String.self,     forKey: .postcode)
         woonplaats    = try c.decode(String.self,     forKey: .woonplaats)
-        shopEmail     = (try? c.decodeIfPresent(String.self,  forKey: .shopEmail))     ?? ""
-        bio           = (try? c.decodeIfPresent(String.self,  forKey: .bio))           ?? ""
-        stijlen       = (try? c.decodeIfPresent([String].self, forKey: .stijlen))      ?? []
-        jarenervaring = (try? c.decodeIfPresent(Int.self,     forKey: .jarenervaring)) ?? 0
-        instagram     = (try? c.decodeIfPresent(String.self,  forKey: .instagram))     ?? ""
-        facebook      = (try? c.decodeIfPresent(String.self,  forKey: .facebook))      ?? ""
-        pinterest     = (try? c.decodeIfPresent(String.self,  forKey: .pinterest))     ?? ""
-        tiktok        = (try? c.decodeIfPresent(String.self,  forKey: .tiktok))        ?? ""
-        website       = (try? c.decodeIfPresent(String.self,  forKey: .website))       ?? ""
+        shopEmail     = (try? c.decodeIfPresent(String.self,   forKey: .shopEmail))     ?? ""
+        bio           = (try? c.decodeIfPresent(String.self,   forKey: .bio))           ?? ""
+        stijlen       = (try? c.decodeIfPresent([String].self, forKey: .stijlen))       ?? []
+        jarenervaring = (try? c.decodeIfPresent(Int.self,      forKey: .jarenervaring)) ?? 0
+        instagram     = (try? c.decodeIfPresent(String.self,   forKey: .instagram))     ?? ""
+        facebook      = (try? c.decodeIfPresent(String.self,   forKey: .facebook))      ?? ""
+        pinterest     = (try? c.decodeIfPresent(String.self,   forKey: .pinterest))     ?? ""
+        tiktok        = (try? c.decodeIfPresent(String.self,   forKey: .tiktok))        ?? ""
+        website       = (try? c.decodeIfPresent(String.self,   forKey: .website))       ?? ""
     }
 }
 
 @MainActor
 class ArtiesStore: ObservableObject {
     @Published var arties:          Arties?
-    @Published var isLoggedIn:      Bool = false
-    @Published var isCheckingCloud: Bool = false
+    @Published var isLoggedIn:      Bool    = false
+    @Published var isCheckingCloud: Bool    = false
+    @Published var profielFotoData: Data?   = nil
+    @Published var portfolioFotos:  [Data?] = Array(repeating: nil, count: 9)
+    @Published var voorbeeldFotos:  [Data?] = Array(repeating: nil, count: 9)
 
     private let loginKey = "arties_logged_in"
     private let dataKey  = "arties_data"
@@ -100,6 +101,9 @@ class ArtiesStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: dataKey) {
             arties = try? JSONDecoder().decode(Arties.self, from: data)
         }
+        profielFotoData = try? Data(contentsOf: profielFotoURL())
+        portfolioFotos  = (0..<9).map { try? Data(contentsOf: portfolioFotoURL($0)) }
+        voorbeeldFotos  = (0..<9).map { try? Data(contentsOf: voorbeeldFotoURL($0)) }
     }
 
     func save(_ arties: Arties) {
@@ -115,16 +119,56 @@ class ArtiesStore: ObservableObject {
         }
     }
 
+    func saveProfielFoto(_ data: Data) {
+        let compressed = compress(data)
+        profielFotoData = compressed
+        try? compressed.write(to: profielFotoURL())
+        if let a = arties {
+            Task { await CloudKitManager.shared.saveArtiestFotos(arties: a, profiel: compressed, portfolio: portfolioFotos, voorbeelden: voorbeeldFotos) }
+        }
+    }
+
+    func savePortfolioFoto(_ data: Data, at index: Int) {
+        let compressed = compress(data)
+        portfolioFotos[index] = compressed
+        try? compressed.write(to: portfolioFotoURL(index))
+        if let a = arties {
+            Task { await CloudKitManager.shared.saveArtiestFotos(arties: a, profiel: profielFotoData, portfolio: portfolioFotos, voorbeelden: voorbeeldFotos) }
+        }
+    }
+
+    func saveVoorbeeldFoto(_ data: Data, at index: Int) {
+        let compressed = compress(data)
+        voorbeeldFotos[index] = compressed
+        try? compressed.write(to: voorbeeldFotoURL(index))
+        if let a = arties {
+            Task { await CloudKitManager.shared.saveArtiestFotos(arties: a, profiel: profielFotoData, portfolio: portfolioFotos, voorbeelden: voorbeeldFotos) }
+        }
+    }
+
+    func removeVoorbeeldFoto(at index: Int) {
+        voorbeeldFotos[index] = nil
+        try? FileManager.default.removeItem(at: voorbeeldFotoURL(index))
+        if let a = arties {
+            Task { await CloudKitManager.shared.saveArtiestFotos(arties: a, profiel: profielFotoData, portfolio: portfolioFotos, voorbeelden: voorbeeldFotos) }
+        }
+    }
+
+    func removePortfolioFoto(at index: Int) {
+        portfolioFotos[index] = nil
+        try? FileManager.default.removeItem(at: portfolioFotoURL(index))
+        if let a = arties {
+            Task { await CloudKitManager.shared.saveArtiestFotos(arties: a, profiel: profielFotoData, portfolio: portfolioFotos, voorbeelden: voorbeeldFotos) }
+        }
+    }
+
     func checkCloud(appleUserID: String) async {
         isCheckingCloud = true
         defer { isCheckingCloud = false }
         guard let found = await CloudKitManager.shared.fetchArties(appleUserID: appleUserID) else { return }
-        arties     = found
-        isLoggedIn = true
-        UserDefaults.standard.set(true, forKey: loginKey)
-        if let data = try? JSONEncoder().encode(found) {
-            UserDefaults.standard.set(data, forKey: dataKey)
-        }
+        persistArties(found)
+        let fotos = await CloudKitManager.shared.fetchArtiestFotos(arties: found)
+        applyFotos(fotos)
     }
 
     func inloggen(email: String, wachtwoord: String) async -> String? {
@@ -136,19 +180,76 @@ class ArtiesStore: ObservableObject {
         guard found.wachtwoord == wachtwoord else {
             return "Wachtwoord klopt niet."
         }
-        arties = found
+        persistArties(found)
+        let fotos = await CloudKitManager.shared.fetchArtiestFotos(arties: found)
+        applyFotos(fotos)
+        return nil
+    }
+
+    func logout() {
+        arties          = nil
+        isLoggedIn      = false
+        profielFotoData = nil
+        portfolioFotos  = Array(repeating: nil, count: 9)
+        voorbeeldFotos  = Array(repeating: nil, count: 9)
+        UserDefaults.standard.removeObject(forKey: loginKey)
+        UserDefaults.standard.removeObject(forKey: dataKey)
+        try? FileManager.default.removeItem(at: profielFotoURL())
+        for i in 0..<9 {
+            try? FileManager.default.removeItem(at: portfolioFotoURL(i))
+            try? FileManager.default.removeItem(at: voorbeeldFotoURL(i))
+        }
+    }
+
+    // MARK: Private
+
+    private func persistArties(_ found: Arties) {
+        arties     = found
         isLoggedIn = true
         UserDefaults.standard.set(true, forKey: loginKey)
         if let data = try? JSONEncoder().encode(found) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
-        return nil
     }
 
-    func logout() {
-        arties     = nil
-        isLoggedIn = false
-        UserDefaults.standard.removeObject(forKey: loginKey)
-        UserDefaults.standard.removeObject(forKey: dataKey)
+    private func applyFotos(_ fotos: (profiel: Data?, portfolio: [Data?], voorbeelden: [Data?])) {
+        if let p = fotos.profiel {
+            profielFotoData = p
+            try? p.write(to: profielFotoURL())
+        }
+        for (i, f) in fotos.portfolio.enumerated() {
+            if let f { portfolioFotos[i] = f; try? f.write(to: portfolioFotoURL(i)) }
+        }
+        for (i, f) in fotos.voorbeelden.enumerated() {
+            if let f { voorbeeldFotos[i] = f; try? f.write(to: voorbeeldFotoURL(i)) }
+        }
+    }
+
+    private func docsDir() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    private func profielFotoURL() -> URL {
+        docsDir().appendingPathComponent("arties_profiel.jpg")
+    }
+
+    private func portfolioFotoURL(_ i: Int) -> URL {
+        docsDir().appendingPathComponent("arties_portfolio_\(i).jpg")
+    }
+
+    private func voorbeeldFotoURL(_ i: Int) -> URL {
+        docsDir().appendingPathComponent("arties_voorbeeld_\(i).jpg")
+    }
+
+    private func compress(_ data: Data) -> Data {
+        guard let img = UIImage(data: data) else { return data }
+        let maxDim: CGFloat = 1080
+        let size = img.size
+        let scale = min(maxDim / max(size.width, size.height), 1)
+        if scale == 1 { return img.jpegData(compressionQuality: 0.8) ?? data }
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
+        return resized.jpegData(compressionQuality: 0.8) ?? data
     }
 }
