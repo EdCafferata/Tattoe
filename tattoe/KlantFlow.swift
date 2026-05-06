@@ -32,6 +32,7 @@ struct KlantAppleLoginView: View {
     let onLogout: () -> Void
 
     @State private var error: String?
+    @State private var showEmailLogin    = false
     @State private var showEmailRegister = false
 
     var body: some View {
@@ -73,18 +74,33 @@ struct KlantAppleLoginView: View {
                     .frame(height: 54)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    Button(action: { showEmailRegister = true }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "envelope.fill")
-                                .font(.system(size: 16))
-                            Text("Registreren met e-mail")
-                                .font(.system(size: 16, weight: .semibold))
+                    // INLOGGEN / REGISTREREN knoppen
+                    HStack(spacing: 12) {
+                        Button(action: { showEmailLogin = true }) {
+                            Text("INLOGGEN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(3)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color(white: 0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(white: 0.35), lineWidth: 1)
+                                )
                         }
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        Button(action: { showEmailRegister = true }) {
+                            Text("REGISTREREN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(3)
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
                 .padding(.horizontal, 40)
@@ -120,6 +136,10 @@ struct KlantAppleLoginView: View {
                         .foregroundColor(Color(white: 0.5))
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showEmailLogin) {
+            KlantEmailLoginView(onLogout: onLogout)
+                .environmentObject(store)
         }
         .fullScreenCover(isPresented: $showEmailRegister) {
             KlantEmailRegisterView(onLogout: onLogout)
@@ -157,6 +177,112 @@ struct KlantAppleLoginView: View {
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."
             }
+        }
+    }
+}
+
+// MARK: - Email inloggen
+
+struct KlantEmailLoginView: View {
+    @EnvironmentObject var store: KlantStore
+    let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var email      = ""
+    @State private var wachtwoord = ""
+    @State private var fout: String?
+    @State private var bezig = false
+    @FocusState private var focus: Veld?
+
+    enum Veld: Hashable { case email, wachtwoord }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                Text("INLOGGEN")
+                    .font(.system(size: 26, weight: .black))
+                    .tracking(6)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Log in met je account")
+                    .font(.system(size: 12))
+                    .tracking(2)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 40)
+
+                VStack(spacing: 1) {
+                    InkField("E-MAILADRES", text: $email, type: .emailAddress, keyboard: .emailAddress)
+                        .focused($focus, equals: .email)
+                    InkField("WACHTWOORD", text: $wachtwoord, secure: true)
+                        .focused($focus, equals: .wachtwoord)
+                }
+                .padding(.horizontal, 24)
+
+                if let fout {
+                    Spacer().frame(height: 14)
+                    Text(fout)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(red: 1, green: 0.3, blue: 0.3))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+
+                Spacer()
+            }
+
+            // Vaste INLOGGEN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: inloggen) {
+                    Group {
+                        if bezig {
+                            ProgressView().tint(.black)
+                        } else {
+                            Text("INLOGGEN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(4)
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(bezig)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop bovenaan
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+    }
+
+    private func inloggen() {
+        fout = nil; focus = nil
+        guard email.contains("@") else { fout = "Voer een geldig e-mailadres in."; return }
+        guard !wachtwoord.isEmpty  else { fout = "Wachtwoord is verplicht."; return }
+        bezig = true
+        Task {
+            let err = await store.inloggen(email: email.lowercased(), wachtwoord: wachtwoord)
+            bezig = false
+            if let err { fout = err } else { dismiss() }
         }
     }
 }
@@ -268,33 +394,25 @@ struct KlantEmailRegisterView: View {
                             .padding(.horizontal, 24)
                     }
 
-                    Spacer().frame(height: 32)
+                    Spacer().frame(height: 100)
+                }
+            }
 
-                    Button(action: registreer) {
-                        HStack {
-                            Spacer()
-                            Text("ACCOUNT AANMAKEN")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(4)
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
+            // Vaste ACCOUNT AANMAKEN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: registreer) {
+                    Text("ACCOUNT AANMAKEN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(4)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(Color.white)
-                    }
-                    .padding(.horizontal, 24)
-
-                    Spacer().frame(height: 16)
-
-                    Button(action: { dismiss() }) {
-                        Text("ANNULEREN")
-                            .font(.system(size: 11))
-                            .tracking(3)
-                            .foregroundColor(Color(white: 0.3))
-                    }
-
-                    Spacer().frame(height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
             }
 
             // TERUG knop bovenaan
@@ -366,6 +484,7 @@ struct KlantEmailRegisterView: View {
 struct KlantNAWView: View {
     @EnvironmentObject var store: KlantStore
     let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
 
     @State private var voornaam   = ""
     @State private var achternaam = ""
@@ -383,8 +502,9 @@ struct KlantNAWView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
+
             ScrollView {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 60)
@@ -437,34 +557,37 @@ struct KlantNAWView: View {
                             .padding(.horizontal, 24)
                     }
 
-                    Spacer().frame(height: 32)
-
-                    Button(action: opslaan) {
-                        HStack {
-                            Spacer()
-                            Text("OPSLAAN")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(5)
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
-                        .frame(height: 54)
-                        .background(Color.white)
-                    }
-                    .padding(.horizontal, 24)
-
-                    Spacer().frame(height: 20)
-
-                    Button(action: { store.logout(); onLogout() }) {
-                        Text("UITLOGGEN")
-                            .font(.system(size: 11))
-                            .tracking(3)
-                            .foregroundColor(Color(white: 0.3))
-                    }
-
-                    Spacer().frame(height: 40)
+                    Spacer().frame(height: 100)
                 }
             }
+
+            // Vaste OPSLAAN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: opslaan) {
+                    Text("OPSLAAN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop bovenaan
+            Button(action: { store.logout(); onLogout(); dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
         }
         .onAppear { prefill() }
     }
@@ -493,7 +616,9 @@ struct KlantNAWView: View {
             fout = "E-mailadres is verplicht."; return
         }
         fout = nil; focus = nil
-        var k = store.klant ?? Klant(authMethod: .apple, appleUserID: "", voornaam: "", achternaam: "", email: "", wachtwoord: "", telefoon: "", straat: "", huisnummer: "", postcode: "", woonplaats: "")
+        var k = store.klant ?? Klant(authMethod: .apple, appleUserID: "", voornaam: "", achternaam: "",
+                                     email: "", wachtwoord: "", telefoon: "", straat: "",
+                                     huisnummer: "", postcode: "", woonplaats: "")
         k.voornaam   = voornaam
         k.achternaam = achternaam
         k.email      = email
@@ -503,6 +628,7 @@ struct KlantNAWView: View {
         k.postcode   = postcode
         k.woonplaats = woonplaats
         store.save(k)
+        dismiss()
     }
 }
 
@@ -752,6 +878,10 @@ struct KlantDashboardView: View {
     @EnvironmentObject var store: KlantStore
     let onLogout: () -> Void
 
+    @State private var showBewerken   = false
+    @State private var shopArtiesten: [ArtiestProfiel] = []
+    @State private var laden          = false
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -768,21 +898,122 @@ struct KlantDashboardView: View {
                         .tracking(2)
                         .foregroundColor(Color(white: 0.45))
                 }
-                Spacer().frame(height: 60)
-                Text("Hier komt het klant scherm")
-                    .font(.system(size: 12))
-                    .tracking(2)
-                    .foregroundColor(Color(white: 0.3))
-                Spacer()
-                Button(action: { store.logout(); onLogout() }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
-                        Text("UITLOGGEN").font(.system(size: 11, weight: .semibold)).tracking(3)
+
+                Spacer().frame(height: 40)
+
+                // Favoriet shop + gekoppelde artiesten
+                if let shop = store.favorietShop {
+                    VStack(spacing: 8) {
+                        Text("JOUW SHOP")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(4)
+                            .foregroundColor(Color(white: 0.35))
+
+                        Text(shop.bedrijfsnaam)
+                            .font(.system(size: 15, weight: .semibold))
+                            .tracking(1)
+                            .foregroundColor(.white)
+
+                        Text(shop.woonplaats)
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(white: 0.4))
                     }
-                    .foregroundColor(Color(white: 0.35))
+                    .padding(.horizontal, 40)
+
+                    if !shopArtiesten.isEmpty {
+                        Spacer().frame(height: 20)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("ARTIESTEN")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(4)
+                                .foregroundColor(Color(white: 0.35))
+                                .padding(.horizontal, 40)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(shopArtiesten) { artiest in
+                                        VStack(spacing: 4) {
+                                            Text(artiest.kunstnaam.isEmpty ? artiest.email : artiest.kunstnaam)
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundColor(.white)
+                                                .lineLimit(1)
+                                            if !artiest.specialisatie.isEmpty {
+                                                Text(artiest.specialisatie)
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(Color(white: 0.4))
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                        .background(Color(white: 0.09))
+                                        .cornerRadius(6)
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.15), lineWidth: 1))
+                                    }
+                                }
+                                .padding(.horizontal, 40)
+                            }
+                        }
+                    } else if laden {
+                        Spacer().frame(height: 12)
+                        ProgressView().tint(.white).scaleEffect(0.8)
+                    }
+                } else {
+                    Text("Hier komt het klant scherm")
+                        .font(.system(size: 12))
+                        .tracking(2)
+                        .foregroundColor(Color(white: 0.3))
                 }
+
+                Spacer()
+
+                // AANPASSEN + UITLOGGEN naast elkaar
+                HStack(spacing: 12) {
+                    Button(action: { showBewerken = true }) {
+                        Text("AANPASSEN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color(white: 0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(white: 0.25), lineWidth: 1)
+                            )
+                    }
+
+                    Button(action: { store.logout(); onLogout() }) {
+                        Text("UITLOGGEN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color(white: 0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(white: 0.25), lineWidth: 1)
+                            )
+                    }
+                }
+                .padding(.horizontal, 40)
                 .padding(.bottom, 40)
             }
+        }
+        .task {
+            if let shop = store.favorietShop {
+                laden = true
+                shopArtiesten = await CloudKitManager.shared.fetchArtiesten(voorShop: shop.email)
+                laden = false
+            }
+        }
+        .fullScreenCover(isPresented: $showBewerken) {
+            KlantNAWView(onLogout: onLogout)
+                .environmentObject(store)
         }
     }
 }

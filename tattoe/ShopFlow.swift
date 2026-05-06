@@ -30,6 +30,7 @@ struct ShopLoginView: View {
     let onLogout: () -> Void
 
     @State private var error: String?
+    @State private var showEmailLogin    = false
     @State private var showEmailRegister = false
 
     var body: some View {
@@ -71,18 +72,33 @@ struct ShopLoginView: View {
                     .frame(height: 54)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    Button(action: { showEmailRegister = true }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "envelope.fill")
-                                .font(.system(size: 16))
-                            Text("Registreren met e-mail")
-                                .font(.system(size: 16, weight: .semibold))
+                    // INLOGGEN / REGISTREREN knoppen
+                    HStack(spacing: 12) {
+                        Button(action: { showEmailLogin = true }) {
+                            Text("INLOGGEN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(3)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color(white: 0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(white: 0.35), lineWidth: 1)
+                                )
                         }
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        Button(action: { showEmailRegister = true }) {
+                            Text("REGISTREREN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(3)
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
                 .padding(.horizontal, 40)
@@ -117,6 +133,10 @@ struct ShopLoginView: View {
                         .foregroundColor(Color(white: 0.5))
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showEmailLogin) {
+            ShopEmailLoginView(onLogout: onLogout)
+                .environmentObject(store)
         }
         .fullScreenCover(isPresented: $showEmailRegister) {
             ShopEmailRegisterView(onLogout: onLogout)
@@ -154,6 +174,112 @@ struct ShopLoginView: View {
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."
             }
+        }
+    }
+}
+
+// MARK: - Email inloggen
+
+struct ShopEmailLoginView: View {
+    @EnvironmentObject var store: ShopStore
+    let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var email      = ""
+    @State private var wachtwoord = ""
+    @State private var fout: String?
+    @State private var bezig = false
+    @FocusState private var focus: Veld?
+
+    enum Veld: Hashable { case email, wachtwoord }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                Text("INLOGGEN")
+                    .font(.system(size: 26, weight: .black))
+                    .tracking(6)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Log in met je shop account")
+                    .font(.system(size: 12))
+                    .tracking(2)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 40)
+
+                VStack(spacing: 1) {
+                    InkField("E-MAILADRES", text: $email, type: .emailAddress, keyboard: .emailAddress)
+                        .focused($focus, equals: .email)
+                    InkField("WACHTWOORD", text: $wachtwoord, secure: true)
+                        .focused($focus, equals: .wachtwoord)
+                }
+                .padding(.horizontal, 24)
+
+                if let fout {
+                    Spacer().frame(height: 14)
+                    Text(fout)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(red: 1, green: 0.3, blue: 0.3))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+
+                Spacer()
+            }
+
+            // Vaste INLOGGEN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: inloggen) {
+                    Group {
+                        if bezig {
+                            ProgressView().tint(.black)
+                        } else {
+                            Text("INLOGGEN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(4)
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(bezig)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop bovenaan
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+    }
+
+    private func inloggen() {
+        fout = nil; focus = nil
+        guard email.contains("@") else { fout = "Voer een geldig e-mailadres in."; return }
+        guard !wachtwoord.isEmpty  else { fout = "Wachtwoord is verplicht."; return }
+        bezig = true
+        Task {
+            let err = await store.inloggen(email: email.lowercased(), wachtwoord: wachtwoord)
+            bezig = false
+            if let err { fout = err } else { dismiss() }
         }
     }
 }
@@ -286,33 +412,25 @@ struct ShopEmailRegisterView: View {
                             .padding(.horizontal, 24)
                     }
 
-                    Spacer().frame(height: 32)
+                    Spacer().frame(height: 100)
+                }
+            }
 
-                    Button(action: registreer) {
-                        HStack {
-                            Spacer()
-                            Text("ACCOUNT AANMAKEN")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(4)
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
+            // Vaste ACCOUNT AANMAKEN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: registreer) {
+                    Text("ACCOUNT AANMAKEN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(4)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(Color.white)
-                    }
-                    .padding(.horizontal, 24)
-
-                    Spacer().frame(height: 16)
-
-                    Button(action: { dismiss() }) {
-                        Text("ANNULEREN")
-                            .font(.system(size: 11))
-                            .tracking(3)
-                            .foregroundColor(Color(white: 0.3))
-                    }
-
-                    Spacer().frame(height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
             }
 
             // TERUG knop bovenaan
@@ -387,6 +505,7 @@ struct ShopEmailRegisterView: View {
 struct ShopNAWView: View {
     @EnvironmentObject var store: ShopStore
     let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
 
     @State private var bedrijfsnaam = ""
     @State private var kvk          = ""
@@ -409,8 +528,9 @@ struct ShopNAWView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
+
             ScrollView {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 60)
@@ -471,34 +591,37 @@ struct ShopNAWView: View {
                             .padding(.horizontal, 24)
                     }
 
-                    Spacer().frame(height: 32)
-
-                    Button(action: opslaan) {
-                        HStack {
-                            Spacer()
-                            Text("OPSLAAN")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(5)
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
-                        .frame(height: 54)
-                        .background(Color.white)
-                    }
-                    .padding(.horizontal, 24)
-
-                    Spacer().frame(height: 20)
-
-                    Button(action: { store.logout(); onLogout() }) {
-                        Text("UITLOGGEN")
-                            .font(.system(size: 11))
-                            .tracking(3)
-                            .foregroundColor(Color(white: 0.3))
-                    }
-
-                    Spacer().frame(height: 40)
+                    Spacer().frame(height: 100)
                 }
             }
+
+            // Vaste OPSLAAN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: opslaan) {
+                    Text("OPSLAAN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop bovenaan
+            Button(action: { store.logout(); onLogout(); dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
         }
         .onAppear { prefill() }
     }
@@ -530,7 +653,9 @@ struct ShopNAWView: View {
             fout = "E-mailadres is verplicht."; return
         }
         fout = nil; focus = nil
-        var s = store.shop ?? Shop(authMethod: .apple, appleUserID: "", bedrijfsnaam: "", kvk: "", btw: "", voornaam: "", achternaam: "", email: "", wachtwoord: "", telefoon: "", straat: "", huisnummer: "", postcode: "", woonplaats: "")
+        var s = store.shop ?? Shop(authMethod: .apple, appleUserID: "", bedrijfsnaam: "", kvk: "",
+                                   btw: "", voornaam: "", achternaam: "", email: "", wachtwoord: "",
+                                   telefoon: "", straat: "", huisnummer: "", postcode: "", woonplaats: "")
         s.bedrijfsnaam = bedrijfsnaam
         s.kvk          = kvk
         s.btw          = btw
@@ -543,6 +668,7 @@ struct ShopNAWView: View {
         s.postcode     = postcode
         s.woonplaats   = woonplaats
         store.save(s)
+        dismiss()
     }
 }
 
@@ -551,6 +677,8 @@ struct ShopNAWView: View {
 struct ShopDashboardView: View {
     @EnvironmentObject var store: ShopStore
     let onLogout: () -> Void
+
+    @State private var showBewerken = false
 
     var body: some View {
         ZStack {
@@ -574,15 +702,46 @@ struct ShopDashboardView: View {
                     .tracking(2)
                     .foregroundColor(Color(white: 0.3))
                 Spacer()
-                Button(action: { store.logout(); onLogout() }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
-                        Text("UITLOGGEN").font(.system(size: 11, weight: .semibold)).tracking(3)
+
+                // AANPASSEN + UITLOGGEN naast elkaar
+                HStack(spacing: 12) {
+                    Button(action: { showBewerken = true }) {
+                        Text("AANPASSEN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color(white: 0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(white: 0.25), lineWidth: 1)
+                            )
                     }
-                    .foregroundColor(Color(white: 0.35))
+
+                    Button(action: { store.logout(); onLogout() }) {
+                        Text("UITLOGGEN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color(white: 0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(white: 0.25), lineWidth: 1)
+                            )
+                    }
                 }
+                .padding(.horizontal, 40)
                 .padding(.bottom, 40)
             }
+        }
+        .fullScreenCover(isPresented: $showBewerken) {
+            ShopNAWView(onLogout: onLogout)
+                .environmentObject(store)
         }
     }
 }

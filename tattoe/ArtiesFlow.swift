@@ -30,6 +30,7 @@ struct ArtiesLoginView: View {
     let onLogout: () -> Void
 
     @State private var error: String?
+    @State private var showEmailLogin    = false
     @State private var showEmailRegister = false
 
     var body: some View {
@@ -71,18 +72,33 @@ struct ArtiesLoginView: View {
                     .frame(height: 54)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    Button(action: { showEmailRegister = true }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "envelope.fill")
-                                .font(.system(size: 16))
-                            Text("Registreren met e-mail")
-                                .font(.system(size: 16, weight: .semibold))
+                    // INLOGGEN / REGISTREREN knoppen
+                    HStack(spacing: 12) {
+                        Button(action: { showEmailLogin = true }) {
+                            Text("INLOGGEN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(3)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color(white: 0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(white: 0.35), lineWidth: 1)
+                                )
                         }
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        Button(action: { showEmailRegister = true }) {
+                            Text("REGISTREREN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(3)
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
                 .padding(.horizontal, 40)
@@ -117,6 +133,10 @@ struct ArtiesLoginView: View {
                         .foregroundColor(Color(white: 0.5))
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showEmailLogin) {
+            ArtiesEmailLoginView(onLogout: onLogout)
+                .environmentObject(store)
         }
         .fullScreenCover(isPresented: $showEmailRegister) {
             ArtiesEmailRegisterView(onLogout: onLogout)
@@ -157,6 +177,112 @@ struct ArtiesLoginView: View {
     }
 }
 
+// MARK: - Email inloggen
+
+struct ArtiesEmailLoginView: View {
+    @EnvironmentObject var store: ArtiesStore
+    let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var email     = ""
+    @State private var wachtwoord = ""
+    @State private var fout: String?
+    @State private var bezig = false
+    @FocusState private var focus: Veld?
+
+    enum Veld: Hashable { case email, wachtwoord }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                Text("INLOGGEN")
+                    .font(.system(size: 26, weight: .black))
+                    .tracking(6)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Log in met je artiest account")
+                    .font(.system(size: 12))
+                    .tracking(2)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 40)
+
+                VStack(spacing: 1) {
+                    InkField("E-MAILADRES", text: $email, type: .emailAddress, keyboard: .emailAddress)
+                        .focused($focus, equals: .email)
+                    InkField("WACHTWOORD", text: $wachtwoord, secure: true)
+                        .focused($focus, equals: .wachtwoord)
+                }
+                .padding(.horizontal, 24)
+
+                if let fout {
+                    Spacer().frame(height: 14)
+                    Text(fout)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(red: 1, green: 0.3, blue: 0.3))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+
+                Spacer()
+            }
+
+            // Vaste INLOGGEN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: inloggen) {
+                    Group {
+                        if bezig {
+                            ProgressView().tint(.black)
+                        } else {
+                            Text("INLOGGEN")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(4)
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(bezig)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop bovenaan
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+    }
+
+    private func inloggen() {
+        fout = nil; focus = nil
+        guard email.contains("@") else { fout = "Voer een geldig e-mailadres in."; return }
+        guard !wachtwoord.isEmpty  else { fout = "Wachtwoord is verplicht."; return }
+        bezig = true
+        Task {
+            let err = await store.inloggen(email: email.lowercased(), wachtwoord: wachtwoord)
+            bezig = false
+            if let err { fout = err } else { dismiss() }
+        }
+    }
+}
+
 // MARK: - Email registratie formulier
 
 struct ArtiesEmailRegisterView: View {
@@ -176,6 +302,8 @@ struct ArtiesEmailRegisterView: View {
     @State private var huisnummer    = ""
     @State private var postcode      = ""
     @State private var woonplaats    = ""
+    @State private var gekozenShop:  ShopProfiel? = nil
+    @State private var showShopZoeker = false
     @State private var fout: String?
     @FocusState private var focus: Veld?
 
@@ -241,6 +369,40 @@ struct ArtiesEmailRegisterView: View {
 
                     Spacer().frame(height: 24)
 
+                    // ── Sectie: Shop ─────────────────────
+                    sectionLabel("SHOP (OPTIONEEL)")
+
+                    Button(action: { showShopZoeker = true }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let shop = gekozenShop {
+                                    Text(shop.bedrijfsnaam)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.white)
+                                    Text(shop.woonplaats)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(white: 0.4))
+                                } else {
+                                    Text("Kies je shop")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(Color(white: 0.35))
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(white: 0.3))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(white: 0.07))
+                        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                    }
+                    .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 24)
+
                     // ── Sectie: Contact ──────────────────
                     sectionLabel("CONTACT")
 
@@ -280,33 +442,25 @@ struct ArtiesEmailRegisterView: View {
                             .padding(.horizontal, 24)
                     }
 
-                    Spacer().frame(height: 32)
+                    Spacer().frame(height: 100) // ruimte voor vaste knop
+                }
+            }
 
-                    Button(action: registreer) {
-                        HStack {
-                            Spacer()
-                            Text("ACCOUNT AANMAKEN")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(4)
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
+            // Vaste ACCOUNT AANMAKEN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: registreer) {
+                    Text("ACCOUNT AANMAKEN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(4)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
                         .frame(height: 54)
                         .background(Color.white)
-                    }
-                    .padding(.horizontal, 24)
-
-                    Spacer().frame(height: 16)
-
-                    Button(action: { dismiss() }) {
-                        Text("ANNULEREN")
-                            .font(.system(size: 11))
-                            .tracking(3)
-                            .foregroundColor(Color(white: 0.3))
-                    }
-
-                    Spacer().frame(height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
             }
 
             // TERUG knop bovenaan
@@ -319,6 +473,12 @@ struct ArtiesEmailRegisterView: View {
             }
             .padding(.leading, 24)
             .padding(.top, 16)
+        }
+        .fullScreenCover(isPresented: $showShopZoeker) {
+            ShopZoekerView { shop in
+                gekozenShop = shop
+                showShopZoeker = false
+            }
         }
     }
 
@@ -365,7 +525,8 @@ struct ArtiesEmailRegisterView: View {
             straat:        straat,
             huisnummer:    huisnummer,
             postcode:      postcode,
-            woonplaats:    woonplaats
+            woonplaats:    woonplaats,
+            shopEmail:     gekozenShop?.email ?? ""
         )
         store.save(arties)
         dismiss()
@@ -377,6 +538,7 @@ struct ArtiesEmailRegisterView: View {
 struct ArtiesNAWView: View {
     @EnvironmentObject var store: ArtiesStore
     let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
 
     @State private var voornaam      = ""
     @State private var achternaam    = ""
@@ -388,6 +550,8 @@ struct ArtiesNAWView: View {
     @State private var huisnummer    = ""
     @State private var postcode      = ""
     @State private var woonplaats    = ""
+    @State private var gekozenShop:  ShopProfiel? = nil
+    @State private var showShopZoeker = false
     @State private var fout: String?
     @FocusState private var focus: Veld?
 
@@ -397,8 +561,9 @@ struct ArtiesNAWView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
+
             ScrollView {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 60)
@@ -447,6 +612,40 @@ struct ArtiesNAWView: View {
                     }
                     .padding(.horizontal, 24)
 
+                    Spacer().frame(height: 16)
+
+                    // ── Shop kiezer ───────────────────────
+                    sectionLabel("SHOP (OPTIONEEL)")
+
+                    Button(action: { showShopZoeker = true }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let shop = gekozenShop {
+                                    Text(shop.bedrijfsnaam)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.white)
+                                    Text(shop.woonplaats)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(white: 0.4))
+                                } else {
+                                    Text("Kies je shop")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(Color(white: 0.35))
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(white: 0.3))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(white: 0.07))
+                        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                    }
+                    .padding(.horizontal, 24)
+
                     if let fout {
                         Spacer().frame(height: 16)
                         Text(fout)
@@ -455,36 +654,59 @@ struct ArtiesNAWView: View {
                             .padding(.horizontal, 24)
                     }
 
-                    Spacer().frame(height: 32)
-
-                    Button(action: opslaan) {
-                        HStack {
-                            Spacer()
-                            Text("OPSLAAN")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(5)
-                                .foregroundColor(.black)
-                            Spacer()
-                        }
-                        .frame(height: 54)
-                        .background(Color.white)
-                    }
-                    .padding(.horizontal, 24)
-
-                    Spacer().frame(height: 20)
-
-                    Button(action: { store.logout(); onLogout() }) {
-                        Text("UITLOGGEN")
-                            .font(.system(size: 11))
-                            .tracking(3)
-                            .foregroundColor(Color(white: 0.3))
-                    }
-
-                    Spacer().frame(height: 40)
+                    Spacer().frame(height: 100)
                 }
             }
+
+            // Vaste OPSLAAN knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: opslaan) {
+                    Text("OPSLAAN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            // TERUG knop bovenaan
+            Button(action: { store.logout(); onLogout(); dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
         }
         .onAppear { prefill() }
+        .fullScreenCover(isPresented: $showShopZoeker) {
+            ShopZoekerView { shop in
+                gekozenShop = shop
+                showShopZoeker = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionLabel(_ text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(.system(size: 9, weight: .bold))
+                .tracking(4)
+                .foregroundColor(Color(white: 0.35))
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 8)
+        .padding(.top, 4)
     }
 
     private func prefill() {
@@ -513,7 +735,9 @@ struct ArtiesNAWView: View {
             fout = "E-mailadres is verplicht."; return
         }
         fout = nil; focus = nil
-        var a = store.arties ?? Arties(authMethod: .apple, appleUserID: "", voornaam: "", achternaam: "", email: "", wachtwoord: "", kunstnaam: "", specialisatie: "", telefoon: "", straat: "", huisnummer: "", postcode: "", woonplaats: "")
+        var a = store.arties ?? Arties(authMethod: .apple, appleUserID: "", voornaam: "", achternaam: "",
+                                       email: "", wachtwoord: "", kunstnaam: "", specialisatie: "",
+                                       telefoon: "", straat: "", huisnummer: "", postcode: "", woonplaats: "")
         a.voornaam      = voornaam
         a.achternaam    = achternaam
         a.email         = email
@@ -524,7 +748,129 @@ struct ArtiesNAWView: View {
         a.huisnummer    = huisnummer
         a.postcode      = postcode
         a.woonplaats    = woonplaats
+        a.shopEmail     = gekozenShop?.email ?? a.shopEmail
         store.save(a)
+        dismiss()
+    }
+}
+
+// MARK: - Shop zoeker (voor artiest registratie/NAW)
+
+struct ShopZoekerView: View {
+    let onKies: (ShopProfiel) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var shops: [ShopProfiel] = []
+    @State private var laden = true
+    @State private var zoekterm = ""
+
+    private var gefilterdeShops: [ShopProfiel] {
+        guard !zoekterm.isEmpty else { return shops }
+        return shops.filter {
+            $0.bedrijfsnaam.localizedCaseInsensitiveContains(zoekterm) ||
+            $0.woonplaats.localizedCaseInsensitiveContains(zoekterm)
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+
+                Text("KIES JE SHOP")
+                    .font(.system(size: 22, weight: .black))
+                    .tracking(5)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Zoek de shop waar je werkt")
+                    .font(.system(size: 11))
+                    .tracking(1.5)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 20)
+
+                // Zoekbalk
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(white: 0.4))
+                    TextField("Zoek op naam of plaats…", text: $zoekterm)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                        .tint(.white)
+                        .autocorrectionDisabled()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(white: 0.07))
+                .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                .padding(.horizontal, 24)
+
+                Spacer().frame(height: 16)
+
+                if laden {
+                    Spacer()
+                    ProgressView().tint(.white)
+                    Spacer()
+                } else if gefilterdeShops.isEmpty {
+                    Spacer()
+                    Text("Geen shops gevonden")
+                        .font(.system(size: 13))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(gefilterdeShops) { shop in
+                                Button(action: { onKies(shop) }) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(shop.bedrijfsnaam)
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundColor(.white)
+                                            Text(shop.woonplaats)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color(white: 0.4))
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(Color(white: 0.25))
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(Color(white: 0.07))
+                                    .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
+                    }
+                }
+            }
+
+            // TERUG knop
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+        .task {
+            shops = await CloudKitManager.shared.fetchPubliekeShops()
+            laden = false
+        }
     }
 }
 
@@ -533,6 +879,8 @@ struct ArtiesNAWView: View {
 struct ArtiesDashboardView: View {
     @EnvironmentObject var store: ArtiesStore
     let onLogout: () -> Void
+
+    @State private var showBewerken = false
 
     var body: some View {
         ZStack {
@@ -556,15 +904,46 @@ struct ArtiesDashboardView: View {
                     .tracking(2)
                     .foregroundColor(Color(white: 0.3))
                 Spacer()
-                Button(action: { store.logout(); onLogout() }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
-                        Text("UITLOGGEN").font(.system(size: 11, weight: .semibold)).tracking(3)
+
+                // AANPASSEN + UITLOGGEN naast elkaar
+                HStack(spacing: 12) {
+                    Button(action: { showBewerken = true }) {
+                        Text("AANPASSEN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color(white: 0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(white: 0.25), lineWidth: 1)
+                            )
                     }
-                    .foregroundColor(Color(white: 0.35))
+
+                    Button(action: { store.logout(); onLogout() }) {
+                        Text("UITLOGGEN")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color(white: 0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color(white: 0.25), lineWidth: 1)
+                            )
+                    }
                 }
+                .padding(.horizontal, 40)
                 .padding(.bottom, 40)
             }
+        }
+        .fullScreenCover(isPresented: $showBewerken) {
+            ArtiesNAWView(onLogout: onLogout)
+                .environmentObject(store)
         }
     }
 }

@@ -41,7 +41,10 @@ class ShopStore: ObservableObject {
         if let data = try? JSONEncoder().encode(shop) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
-        Task { try? await CloudKitManager.shared.saveShop(shop) }
+        Task {
+            try? await CloudKitManager.shared.saveShop(shop)
+            await CloudKitManager.shared.savePubliekShop(shop)
+        }
     }
 
     func checkCloud(appleUserID: String) async {
@@ -54,6 +57,24 @@ class ShopStore: ObservableObject {
         if let data = try? JSONEncoder().encode(found) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
+    }
+
+    func inloggen(email: String, wachtwoord: String) async -> String? {
+        isCheckingCloud = true
+        defer { isCheckingCloud = false }
+        guard let found = await CloudKitManager.shared.fetchShop(email: email) else {
+            return "Geen account gevonden met dit e-mailadres."
+        }
+        guard found.wachtwoord == wachtwoord else {
+            return "Wachtwoord klopt niet."
+        }
+        shop = found
+        isLoggedIn = true
+        UserDefaults.standard.set(true, forKey: loginKey)
+        if let data = try? JSONEncoder().encode(found) {
+            UserDefaults.standard.set(data, forKey: dataKey)
+        }
+        return nil
     }
 
     func logout() {

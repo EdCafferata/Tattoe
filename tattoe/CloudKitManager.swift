@@ -2,21 +2,24 @@ import CloudKit
 import Foundation
 
 // MARK: - CloudKit Manager
-// Private database: elk record is alleen zichtbaar voor de eigenaar (per iCloud account).
+// Private database: persoonlijke Klant/Arties/Shop records (alleen zichtbaar voor eigenaar).
+// Public database:  publieke profielen voor discovery (ArtiestProfiel, ShopProfiel).
 // Schema's worden automatisch aangemaakt in Development bij de eerste save.
-// Record types: Klant · Arties · Shop — elk met een "userType" veld voor identificatie.
 
 final class CloudKitManager {
     static let shared = CloudKitManager()
 
-    private let db: CKDatabase
+    private let db:       CKDatabase  // private
+    private let publicDb: CKDatabase  // public
 
     private init() {
-        db = CKContainer(identifier: "iCloud.info.cafferata.tattoe").privateCloudDatabase
+        let container = CKContainer(identifier: "iCloud.info.cafferata.tattoe")
+        db       = container.privateCloudDatabase
+        publicDb = container.publicCloudDatabase
     }
 
     // ─────────────────────────────────────────────
-    // MARK: - Klant
+    // MARK: - Klant (private DB)
     // ─────────────────────────────────────────────
 
     func saveKlant(_ klant: Klant, consentGegeven: Bool) async throws {
@@ -40,16 +43,16 @@ final class CloudKitManager {
         try await db.save(record)
     }
 
-    // Zoekt op appleUserID (directe record ID lookup — geen query nodig)
-    func fetchKlant(appleUserID: String) async -> (klant: Klant, consent: Bool)? {
+    // Zoekt op appleUserID (directe record ID lookup)
+    func fetchKlant(appleUserID: String) async -> (klant: Klant, consent: Bool, favorietArtiesEmail: String?, favorietShopEmail: String?)? {
         guard !appleUserID.isEmpty else { return nil }
         let id = CKRecord.ID(recordName: "klant_\(appleUserID)")
         guard let record = try? await db.record(for: id) else { return nil }
         return klantFromRecord(record)
     }
 
-    // Zoekt op e-mailadres (vereist queryable index in CloudKit Dashboard voor productie)
-    func fetchKlant(email: String) async -> (klant: Klant, consent: Bool)? {
+    // Zoekt op e-mailadres
+    func fetchKlant(email: String) async -> (klant: Klant, consent: Bool, favorietArtiesEmail: String?, favorietShopEmail: String?)? {
         guard !email.isEmpty else { return nil }
         let pred  = NSPredicate(format: "email == %@", email.lowercased())
         let query = CKQuery(recordType: "Klant", predicate: pred)
@@ -58,7 +61,21 @@ final class CloudKitManager {
         return klantFromRecord(record)
     }
 
-    private func klantFromRecord(_ r: CKRecord) -> (Klant, Bool)? {
+    func saveFavorietArties(klant: Klant, artiesEmail: String) async {
+        let id = CKRecord.ID(recordName: recordName("klant", klant.appleUserID, klant.email))
+        guard let record = try? await db.record(for: id) else { return }
+        record["favorietArtiesEmail"] = artiesEmail
+        try? await db.save(record)
+    }
+
+    func saveFavorietShop(klant: Klant, shopEmail: String) async {
+        let id = CKRecord.ID(recordName: recordName("klant", klant.appleUserID, klant.email))
+        guard let record = try? await db.record(for: id) else { return }
+        record["favorietShopEmail"] = shopEmail
+        try? await db.save(record)
+    }
+
+    private func klantFromRecord(_ r: CKRecord) -> (Klant, Bool, String?, String?)? {
         guard let am = AuthMethod(rawValue: r["authMethod"] as? String ?? "") else { return nil }
         let k = Klant(
             authMethod:  am,
@@ -73,12 +90,14 @@ final class CloudKitManager {
             postcode:    r["postcode"]    as? String ?? "",
             woonplaats:  r["woonplaats"]  as? String ?? ""
         )
-        let consent = (r["consentGegeven"] as? Int64 ?? 0) == 1
-        return (k, consent)
+        let consent           = (r["consentGegeven"] as? Int64 ?? 0) == 1
+        let favorietArties    = r["favorietArtiesEmail"] as? String
+        let favorietShop      = r["favorietShopEmail"]   as? String
+        return (k, consent, favorietArties, favorietShop)
     }
 
     // ─────────────────────────────────────────────
-    // MARK: - Arties
+    // MARK: - Arties (private DB)
     // ─────────────────────────────────────────────
 
     func saveArties(_ arties: Arties) async throws {
@@ -99,6 +118,15 @@ final class CloudKitManager {
         record["huisnummer"]    = arties.huisnummer
         record["postcode"]      = arties.postcode
         record["woonplaats"]    = arties.woonplaats
+        record["shopEmail"]     = arties.shopEmail
+        record["bio"]           = arties.bio
+        record["stijlen"]       = arties.stijlen as NSArray
+        record["jarenervaring"] = arties.jarenervaring
+        record["instagram"]     = arties.instagram
+        record["facebook"]      = arties.facebook
+        record["pinterest"]     = arties.pinterest
+        record["tiktok"]        = arties.tiktok
+        record["website"]       = arties.website
 
         try await db.save(record)
     }
@@ -134,12 +162,21 @@ final class CloudKitManager {
             straat:        r["straat"]         as? String ?? "",
             huisnummer:    r["huisnummer"]     as? String ?? "",
             postcode:      r["postcode"]       as? String ?? "",
-            woonplaats:    r["woonplaats"]     as? String ?? ""
+            woonplaats:    r["woonplaats"]     as? String ?? "",
+            shopEmail:     r["shopEmail"]      as? String ?? "",
+            bio:           r["bio"]            as? String ?? "",
+            stijlen:       r["stijlen"]        as? [String] ?? [],
+            jarenervaring: r["jarenervaring"]  as? Int ?? 0,
+            instagram:     r["instagram"]      as? String ?? "",
+            facebook:      r["facebook"]       as? String ?? "",
+            pinterest:     r["pinterest"]      as? String ?? "",
+            tiktok:        r["tiktok"]         as? String ?? "",
+            website:       r["website"]        as? String ?? ""
         )
     }
 
     // ─────────────────────────────────────────────
-    // MARK: - Shop
+    // MARK: - Shop (private DB)
     // ─────────────────────────────────────────────
 
     func saveShop(_ shop: Shop) async throws {
@@ -198,6 +235,106 @@ final class CloudKitManager {
             huisnummer:   r["huisnummer"]   as? String ?? "",
             postcode:     r["postcode"]     as? String ?? "",
             woonplaats:   r["woonplaats"]   as? String ?? ""
+        )
+    }
+
+    // ─────────────────────────────────────────────
+    // MARK: - ArtiestProfiel (public DB)
+    // ─────────────────────────────────────────────
+
+    func savePubliekArties(_ arties: Arties) async {
+        guard !arties.email.isEmpty else { return }
+        let id     = CKRecord.ID(recordName: "artiestprofiel_\(arties.email.lowercased())")
+        let record = (try? await publicDb.record(for: id)) ?? CKRecord(recordType: "ArtiestProfiel", recordID: id)
+
+        record["kunstnaam"]     = arties.kunstnaam
+        record["specialisatie"] = arties.specialisatie
+        record["woonplaats"]    = arties.woonplaats
+        record["email"]         = arties.email.lowercased()
+        record["shopEmail"]     = arties.shopEmail
+        record["bio"]           = arties.bio
+        record["stijlen"]       = arties.stijlen as NSArray
+        record["instagram"]     = arties.instagram
+        record["website"]       = arties.website
+
+        try? await publicDb.save(record)
+    }
+
+    func fetchPubliekeArtiesten() async -> [ArtiestProfiel] {
+        let pred  = NSPredicate(value: true)
+        let query = CKQuery(recordType: "ArtiestProfiel", predicate: pred)
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { artiestProfielFromRecord($0) }
+    }
+
+    func fetchArtiesten(voorShop shopEmail: String) async -> [ArtiestProfiel] {
+        guard !shopEmail.isEmpty else { return [] }
+        let pred  = NSPredicate(format: "shopEmail == %@", shopEmail.lowercased())
+        let query = CKQuery(recordType: "ArtiestProfiel", predicate: pred)
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { artiestProfielFromRecord($0) }
+    }
+
+    func fetchPubliekArties(email: String) async -> ArtiestProfiel? {
+        guard !email.isEmpty else { return nil }
+        let id = CKRecord.ID(recordName: "artiestprofiel_\(email.lowercased())")
+        guard let record = try? await publicDb.record(for: id) else { return nil }
+        return artiestProfielFromRecord(record)
+    }
+
+    private func artiestProfielFromRecord(_ r: CKRecord) -> ArtiestProfiel? {
+        guard let email = r["email"] as? String else { return nil }
+        return ArtiestProfiel(
+            id:            email,
+            kunstnaam:     r["kunstnaam"]     as? String ?? "",
+            specialisatie: r["specialisatie"] as? String ?? "",
+            woonplaats:    r["woonplaats"]    as? String ?? "",
+            email:         email,
+            shopEmail:     r["shopEmail"]     as? String ?? "",
+            bio:           r["bio"]           as? String ?? "",
+            stijlen:       r["stijlen"]       as? [String] ?? [],
+            instagram:     r["instagram"]     as? String ?? "",
+            website:       r["website"]       as? String ?? ""
+        )
+    }
+
+    // ─────────────────────────────────────────────
+    // MARK: - ShopProfiel (public DB)
+    // ─────────────────────────────────────────────
+
+    func savePubliekShop(_ shop: Shop) async {
+        guard !shop.email.isEmpty else { return }
+        let id     = CKRecord.ID(recordName: "shopprofiel_\(shop.email.lowercased())")
+        let record = (try? await publicDb.record(for: id)) ?? CKRecord(recordType: "ShopProfiel", recordID: id)
+
+        record["bedrijfsnaam"] = shop.bedrijfsnaam
+        record["woonplaats"]   = shop.woonplaats
+        record["email"]        = shop.email.lowercased()
+
+        try? await publicDb.save(record)
+    }
+
+    func fetchPubliekeShops() async -> [ShopProfiel] {
+        let pred  = NSPredicate(value: true)
+        let query = CKQuery(recordType: "ShopProfiel", predicate: pred)
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { shopProfielFromRecord($0) }
+    }
+
+    func fetchPubliekShop(email: String) async -> ShopProfiel? {
+        guard !email.isEmpty else { return nil }
+        let id = CKRecord.ID(recordName: "shopprofiel_\(email.lowercased())")
+        guard let record = try? await publicDb.record(for: id) else { return nil }
+        return shopProfielFromRecord(record)
+    }
+
+    private func shopProfielFromRecord(_ r: CKRecord) -> ShopProfiel? {
+        guard let email = r["email"] as? String else { return nil }
+        return ShopProfiel(
+            id:           email,
+            bedrijfsnaam: r["bedrijfsnaam"] as? String ?? "",
+            woonplaats:   r["woonplaats"]   as? String ?? "",
+            email:        email
         )
     }
 
