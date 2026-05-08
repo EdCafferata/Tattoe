@@ -113,6 +113,16 @@ struct ShopLoginView: View {
 
                 Spacer()
 
+                #if DEBUG
+                Button(action: devInloggen) {
+                    Text("DEV: DIRECT INLOGGEN")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(2)
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                }
+                .padding(.bottom, 8)
+                #endif
+
                 Button(action: onLogout) {
                     HStack(spacing: 8) {
                         Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
@@ -143,6 +153,28 @@ struct ShopLoginView: View {
                 .environmentObject(store)
         }
     }
+
+    #if DEBUG
+    private func devInloggen() {
+        let testShop = Shop(
+            authMethod:   .email,
+            appleUserID:  "",
+            bedrijfsnaam: "Dragon Tattoo Shop",
+            kvk:          "12345678",
+            btw:          "NL123456789B01",
+            voornaam:     "Marco",
+            achternaam:   "van den Berg",
+            email:        "marco@dragontattoo.nl",
+            wachtwoord:   "test1234",
+            telefoon:     "0201234567",
+            straat:       "Leidseplein",
+            huisnummer:   "5",
+            postcode:     "1017PT",
+            woonplaats:   "Amsterdam"
+        )
+        store.save(testShop)
+    }
+    #endif
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
         switch result {
@@ -230,6 +262,21 @@ struct ShopEmailLoginView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
+
+                #if DEBUG
+                Spacer().frame(height: 20)
+                Button(action: { email = "marco@dragontattoo.nl"; wachtwoord = "test1234" }) {
+                    Text("DEV: INVULLEN & INLOGGEN")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(2)
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(Color(white: 0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                #endif
 
                 Spacer()
             }
@@ -333,7 +380,24 @@ struct ShopEmailRegisterView: View {
                         .tracking(2)
                         .foregroundColor(Color(white: 0.4))
 
+                    Spacer().frame(height: 20)
+
+                    #if DEBUG
+                    Button(action: devVulIn) {
+                        Text("DEV: VELDEN INVULLEN")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(2)
+                            .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity)
+                            .background(Color(white: 0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .padding(.horizontal, 24)
+                    Spacer().frame(height: 20)
+                    #else
                     Spacer().frame(height: 36)
+                    #endif
 
                     // ── Sectie: Bedrijf ──────────────────
                     sectionLabel("BEDRIJF")
@@ -445,6 +509,24 @@ struct ShopEmailRegisterView: View {
             .padding(.top, 16)
         }
     }
+
+    #if DEBUG
+    private func devVulIn() {
+        bedrijfsnaam = "Dragon Tattoo Shop"
+        kvk          = "12345678"
+        btw          = "NL123456789B01"
+        voornaam     = "Marco"
+        achternaam   = "van den Berg"
+        email        = "marco@dragontattoo.nl"
+        wachtwoord   = "test1234"
+        bevestig     = "test1234"
+        telefoon     = "0201234567"
+        straat       = "Leidseplein"
+        huisnummer   = "5"
+        postcode     = "1017PT"
+        woonplaats   = "Amsterdam"
+    }
+    #endif
 
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
