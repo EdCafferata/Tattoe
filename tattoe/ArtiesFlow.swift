@@ -164,7 +164,7 @@ struct ArtiesLoginView: View {
             kunstnaam: "Jim Orie", specialisatie: "Realism",
             telefoon: "0612345678", straat: "Kalverstraat", huisnummer: "1",
             postcode: "1012NX", woonplaats: "Amsterdam",
-            shopEmail: "", bio: "Tattoo artiest gespecialiseerd in realism en blackwork.",
+            shopEmails: [], bio: "Tattoo artiest gespecialiseerd in realism en blackwork.",
             stijlen: ["Realism", "Blackwork", "Fineline"], jarenervaring: 8,
             instagram: "https://www.instagram.com/jimorie/",
             facebook: "", pinterest: "", tiktok: "", website: "https://www.dragontattoo.nl"
@@ -346,7 +346,7 @@ struct ArtiesEmailRegisterView: View {
     @State private var huisnummer    = ""
     @State private var postcode      = ""
     @State private var woonplaats    = ""
-    @State private var gekozenShop:  ShopProfiel? = nil
+    @State private var gekozenShops:   [ShopProfiel] = []
     @State private var showShopZoeker = false
     @State private var fout: String?
     @FocusState private var focus: Veld?
@@ -431,36 +431,9 @@ struct ArtiesEmailRegisterView: View {
                     Spacer().frame(height: 24)
 
                     // ── Sectie: Shop ─────────────────────
-                    sectionLabel("SHOP (OPTIONEEL)")
-
-                    Button(action: { showShopZoeker = true }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                if let shop = gekozenShop {
-                                    Text(shop.bedrijfsnaam)
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(.white)
-                                    Text(shop.woonplaats)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(Color(white: 0.4))
-                                } else {
-                                    Text("Kies je shop")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(Color(white: 0.35))
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(white: 0.3))
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(white: 0.07))
-                        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
-                    }
-                    .padding(.horizontal, 24)
+                    sectionLabel("SHOPS (OPTIONEEL)")
+                    shopKiezerRijen(shops: gekozenShops, onToevoegen: { showShopZoeker = true }, onVerwijder: { e in gekozenShops.removeAll { $0.email == e } })
+                        .padding(.horizontal, 24)
 
                     Spacer().frame(height: 24)
 
@@ -536,8 +509,8 @@ struct ArtiesEmailRegisterView: View {
             .padding(.top, 16)
         }
         .fullScreenCover(isPresented: $showShopZoeker) {
-            ShopZoekerView { shop in
-                gekozenShop = shop
+            MultiShopZoekerView(gekozen: gekozenShops) { shops in
+                gekozenShops = shops
                 showShopZoeker = false
             }
         }
@@ -604,7 +577,7 @@ struct ArtiesEmailRegisterView: View {
             huisnummer:    huisnummer,
             postcode:      postcode,
             woonplaats:    woonplaats,
-            shopEmail:     gekozenShop?.email ?? ""
+            shopEmails:    gekozenShops.map { $0.email }
         )
         store.save(arties)
         dismiss()
@@ -628,7 +601,7 @@ struct ArtiesNAWView: View {
     @State private var huisnummer    = ""
     @State private var postcode      = ""
     @State private var woonplaats    = ""
-    @State private var gekozenShop:  ShopProfiel? = nil
+    @State private var gekozenShops:  [ShopProfiel] = []
     @State private var showShopZoeker = false
     @State private var fout: String?
     @FocusState private var focus: Veld?
@@ -693,36 +666,9 @@ struct ArtiesNAWView: View {
                     Spacer().frame(height: 16)
 
                     // ── Shop kiezer ───────────────────────
-                    sectionLabel("SHOP (OPTIONEEL)")
-
-                    Button(action: { showShopZoeker = true }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                if let shop = gekozenShop {
-                                    Text(shop.bedrijfsnaam)
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(.white)
-                                    Text(shop.woonplaats)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(Color(white: 0.4))
-                                } else {
-                                    Text("Kies je shop")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(Color(white: 0.35))
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(white: 0.3))
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(white: 0.07))
-                        .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
-                    }
-                    .padding(.horizontal, 24)
+                    sectionLabel("SHOPS (OPTIONEEL)")
+                    shopKiezerRijen(shops: gekozenShops, onToevoegen: { showShopZoeker = true }, onVerwijder: { e in gekozenShops.removeAll { $0.email == e } })
+                        .padding(.horizontal, 24)
 
                     if let fout {
                         Spacer().frame(height: 16)
@@ -766,8 +712,8 @@ struct ArtiesNAWView: View {
         }
         .onAppear { prefill() }
         .fullScreenCover(isPresented: $showShopZoeker) {
-            ShopZoekerView { shop in
-                gekozenShop = shop
+            MultiShopZoekerView(gekozen: gekozenShops) { shops in
+                gekozenShops = shops
                 showShopZoeker = false
             }
         }
@@ -788,18 +734,18 @@ struct ArtiesNAWView: View {
     }
 
     private func prefill() {
-        if let a = store.arties {
-            voornaam      = a.voornaam
-            achternaam    = a.achternaam
-            email         = a.email
-            kunstnaam     = a.kunstnaam
-            specialisatie = a.specialisatie
-            telefoon      = a.telefoon
-            straat        = a.straat
-            huisnummer    = a.huisnummer
-            postcode      = a.postcode
-            woonplaats    = a.woonplaats
-        }
+        guard let a = store.arties else { return }
+        voornaam      = a.voornaam
+        achternaam    = a.achternaam
+        email         = a.email
+        kunstnaam     = a.kunstnaam
+        specialisatie = a.specialisatie
+        telefoon      = a.telefoon
+        straat        = a.straat
+        huisnummer    = a.huisnummer
+        postcode      = a.postcode
+        woonplaats    = a.woonplaats
+        // Shops worden asynchroon geladen via task hieronder
     }
 
     private func opslaan() {
@@ -826,7 +772,7 @@ struct ArtiesNAWView: View {
         a.huisnummer    = huisnummer
         a.postcode      = postcode
         a.woonplaats    = woonplaats
-        a.shopEmail     = gekozenShop?.email ?? a.shopEmail
+        a.shopEmails    = gekozenShops.map { $0.email }
         store.save(a)
         dismiss()
     }
@@ -952,6 +898,312 @@ struct ShopZoekerView: View {
     }
 }
 
+// MARK: - Gedeelde shop-kiezer UI helper
+
+@ViewBuilder
+func shopKiezerRijen(shops: [ShopProfiel], onToevoegen: @escaping () -> Void, onVerwijder: @escaping (String) -> Void) -> some View {
+    VStack(spacing: 1) {
+        ForEach(shops) { shop in
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(shop.bedrijfsnaam)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                    Text(shop.woonplaats)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.4))
+                }
+                Spacer()
+                Button(action: { onVerwijder(shop.email) }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(white: 0.4))
+                        .frame(width: 32, height: 32)
+                        .background(Color(white: 0.1))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(white: 0.07))
+            .overlay(Rectangle().stroke(Color(white: 0.12), lineWidth: 1))
+        }
+        Button(action: onToevoegen) {
+            HStack(spacing: 10) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Color(white: 0.3))
+                Text(shops.isEmpty ? "Kies je shop(s)" : "Nog een shop toevoegen")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(white: 0.35))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.2))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Color(white: 0.07))
+            .overlay(Rectangle().stroke(Color(white: 0.12), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Multi-shop zoeker
+
+struct MultiShopZoekerView: View {
+    let gekozen:   [ShopProfiel]
+    let onKies:    ([ShopProfiel]) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var shops:     [ShopProfiel] = []
+    @State private var selectie:  Set<String>   = []
+    @State private var laden      = true
+    @State private var zoekterm   = ""
+
+    private var gefilterdeShops: [ShopProfiel] {
+        guard !zoekterm.isEmpty else { return shops }
+        return shops.filter {
+            $0.bedrijfsnaam.localizedCaseInsensitiveContains(zoekterm) ||
+            $0.woonplaats.localizedCaseInsensitiveContains(zoekterm)
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+
+                Text("KIES JE SHOPS")
+                    .font(.system(size: 22, weight: .black))
+                    .tracking(5)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Selecteer alle shops waar je werkt")
+                    .font(.system(size: 11))
+                    .tracking(1.5)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 20)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(white: 0.4))
+                    TextField("Zoek op naam of plaats…", text: $zoekterm)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                        .tint(.white)
+                        .autocorrectionDisabled()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(white: 0.07))
+                .overlay(Rectangle().stroke(Color(white: 0.15), lineWidth: 1))
+                .padding(.horizontal, 24)
+
+                Spacer().frame(height: 16)
+
+                if laden {
+                    Spacer()
+                    ProgressView().tint(.white)
+                    Spacer()
+                } else if gefilterdeShops.isEmpty {
+                    Spacer()
+                    Text("Geen shops gevonden")
+                        .font(.system(size: 13))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(gefilterdeShops) { shop in
+                                Button(action: { toggle(shop.email) }) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(shop.bedrijfsnaam)
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundColor(.white)
+                                            Text(shop.woonplaats)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color(white: 0.4))
+                                        }
+                                        Spacer()
+                                        Image(systemName: selectie.contains(shop.email) ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(selectie.contains(shop.email) ? .white : Color(white: 0.25))
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(selectie.contains(shop.email) ? Color(white: 0.12) : Color(white: 0.07))
+                                    .overlay(Rectangle().stroke(Color(white: 0.12), lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 100)
+                    }
+                }
+            }
+
+            // BEVESTIGEN knop
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: bevestig) {
+                    Text(selectie.isEmpty ? "OVERSLAAN" : "BEVESTIGEN (\(selectie.count))")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(3)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+        .task {
+            shops    = await CloudKitManager.shared.fetchPubliekeShops()
+            selectie = Set(gekozen.map { $0.email })
+            laden    = false
+        }
+    }
+
+    private func toggle(_ email: String) {
+        if selectie.contains(email) { selectie.remove(email) } else { selectie.insert(email) }
+    }
+
+    private func bevestig() {
+        let gekozenShops = shops.filter { selectie.contains($0.email) }
+        onKies(gekozenShops)
+    }
+}
+
+// MARK: - Shops beheer (vanuit dashboard)
+
+struct ArtiesShopsBeheerView: View {
+    @EnvironmentObject var store: ArtiesStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var shopProfielen: [ShopProfiel] = []
+    @State private var showZoeker    = false
+    @State private var laden         = true
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+
+                Text("MIJN SHOPS")
+                    .font(.system(size: 22, weight: .black))
+                    .tracking(5)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Shops waar je werkt of freelance")
+                    .font(.system(size: 11))
+                    .tracking(1.5)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 24)
+
+                if laden {
+                    Spacer()
+                    ProgressView().tint(.white)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            shopKiezerRijen(
+                                shops:       shopProfielen,
+                                onToevoegen: { showZoeker = true },
+                                onVerwijder: { email in verwijder(email) }
+                            )
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 100)
+                        }
+                    }
+                }
+            }
+
+            VStack(spacing: 0) {
+                Spacer()
+                Button(action: opslaan) {
+                    Text("OPSLAAN")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(4)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
+            }
+
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+        .task {
+            await laadShops()
+        }
+        .fullScreenCover(isPresented: $showZoeker) {
+            MultiShopZoekerView(gekozen: shopProfielen) { nieuweShops in
+                shopProfielen = nieuweShops
+                showZoeker    = false
+            }
+        }
+    }
+
+    private func laadShops() async {
+        let emails = store.arties?.shopEmails ?? []
+        if emails.isEmpty { laden = false; return }
+        let alle = await CloudKitManager.shared.fetchPubliekeShops()
+        shopProfielen = alle.filter { emails.contains($0.email) }
+        laden = false
+    }
+
+    private func verwijder(_ email: String) {
+        shopProfielen.removeAll { $0.email == email }
+    }
+
+    private func opslaan() {
+        guard var a = store.arties else { dismiss(); return }
+        a.shopEmails = shopProfielen.map { $0.email }
+        store.save(a)
+        dismiss()
+    }
+}
+
 // MARK: - Dashboard
 
 struct ArtiesDashboardView: View {
@@ -960,6 +1212,7 @@ struct ArtiesDashboardView: View {
 
     @State private var showBewerken  = false
     @State private var showAfspraken = false
+    @State private var showShops     = false
 
     private let portfolioColumns = [
         GridItem(.flexible(), spacing: 2),
@@ -992,6 +1245,53 @@ struct ArtiesDashboardView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                    }
+
+                    // Shops sectie
+                    dashSection("MIJN SHOPS") {
+                        if let a = store.arties, !a.shopEmails.isEmpty {
+                            VStack(spacing: 8) {
+                                ForEach(a.shopEmails, id: \.self) { email in
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "storefront")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(Color(white: 0.4))
+                                        Text(email)
+                                            .font(.system(size: 13))
+                                            .foregroundColor(Color(white: 0.7))
+                                            .lineLimit(1)
+                                        Spacer()
+                                    }
+                                }
+                                Button(action: { showShops = true }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "plus.circle")
+                                            .font(.system(size: 13))
+                                        Text("Shops beheren")
+                                            .font(.system(size: 13))
+                                    }
+                                    .foregroundColor(Color(white: 0.4))
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.top, 4)
+                            }
+                        } else {
+                            Button(action: { showShops = true }) {
+                                HStack {
+                                    Image(systemName: "storefront")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Color(white: 0.5))
+                                    Text("Voeg je shop(s) toe")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color(white: 0.7))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(white: 0.3))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
 
                     if let a = store.arties {
@@ -1100,6 +1400,10 @@ struct ArtiesDashboardView: View {
         }
         .fullScreenCover(isPresented: $showAfspraken) {
             ArtiesAfsprakenView()
+                .environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showShops) {
+            ArtiesShopsBeheerView()
                 .environmentObject(store)
         }
     }

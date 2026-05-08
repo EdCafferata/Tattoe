@@ -16,7 +16,7 @@ struct Arties: Codable {
     var huisnummer:    String
     var postcode:      String
     var woonplaats:    String
-    var shopEmail:     String = ""
+    var shopEmails:    [String] = []   // meerdere shops mogelijk
     var bio:           String = ""
     var stijlen:       [String] = []
     var jarenervaring: Int = 0
@@ -29,7 +29,7 @@ struct Arties: Codable {
     init(authMethod: AuthMethod, appleUserID: String, voornaam: String, achternaam: String,
          email: String, wachtwoord: String, kunstnaam: String, specialisatie: String,
          telefoon: String, straat: String, huisnummer: String, postcode: String,
-         woonplaats: String, shopEmail: String = "", bio: String = "",
+         woonplaats: String, shopEmails: [String] = [], bio: String = "",
          stijlen: [String] = [], jarenervaring: Int = 0, instagram: String = "",
          facebook: String = "", pinterest: String = "", tiktok: String = "",
          website: String = "") {
@@ -46,7 +46,7 @@ struct Arties: Codable {
         self.huisnummer    = huisnummer
         self.postcode      = postcode
         self.woonplaats    = woonplaats
-        self.shopEmail     = shopEmail
+        self.shopEmails    = shopEmails
         self.bio           = bio
         self.stijlen       = stijlen
         self.jarenervaring = jarenervaring
@@ -72,7 +72,12 @@ struct Arties: Codable {
         huisnummer    = try c.decode(String.self,     forKey: .huisnummer)
         postcode      = try c.decode(String.self,     forKey: .postcode)
         woonplaats    = try c.decode(String.self,     forKey: .woonplaats)
-        shopEmail     = (try? c.decodeIfPresent(String.self,   forKey: .shopEmail))     ?? ""
+        // Backward compat: old records had shopEmail (String), new have shopEmails ([String])
+        if let arr = try? c.decodeIfPresent([String].self, forKey: .shopEmails) {
+            shopEmails = arr
+        } else {
+            shopEmails = []
+        }
         bio           = (try? c.decodeIfPresent(String.self,   forKey: .bio))           ?? ""
         stijlen       = (try? c.decodeIfPresent([String].self, forKey: .stijlen))       ?? []
         jarenervaring = (try? c.decodeIfPresent(Int.self,      forKey: .jarenervaring)) ?? 0
