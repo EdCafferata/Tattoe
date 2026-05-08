@@ -54,6 +54,16 @@ struct ShopProfiel: Identifiable, Codable {
     var email:        String
 }
 
+struct Afspraak: Identifiable, Codable {
+    var id:          String = UUID().uuidString
+    var artiesEmail: String
+    var klantEmail:  String
+    var klantNaam:   String
+    var datum:       Date
+    var notitie:     String
+    var status:      String  // "aangevraagd", "bevestigd", "geweigerd"
+}
+
 struct Klant: Codable {
     var authMethod:  AuthMethod
     var appleUserID: String

@@ -958,7 +958,8 @@ struct ArtiesDashboardView: View {
     @EnvironmentObject var store: ArtiesStore
     let onLogout: () -> Void
 
-    @State private var showBewerken = false
+    @State private var showBewerken  = false
+    @State private var showAfspraken = false
 
     private let portfolioColumns = [
         GridItem(.flexible(), spacing: 2),
@@ -967,12 +968,31 @@ struct ArtiesDashboardView: View {
     ]
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Color.black.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 0) {
                     profielHeader
+
+                    // Afspraken sectie
+                    dashSection("AFSPRAKEN") {
+                        Button(action: { showAfspraken = true }) {
+                            HStack {
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.5))
+                                Text("Bekijk afspraakaanvragen")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.7))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(white: 0.3))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     if let a = store.arties {
                         if !a.bio.isEmpty {
@@ -1070,46 +1090,16 @@ struct ArtiesDashboardView: View {
                             .foregroundColor(Color(white: 0.25))
                     }
 
-                    Spacer().frame(height: 120)
+                    Spacer().frame(height: 40)
                 }
-            }
-
-            // Vaste knoppen onderaan
-            VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(0), .black],
-                               startPoint: .top, endPoint: .bottom)
-                    .frame(height: 24)
-                HStack(spacing: 12) {
-                    Button(action: { showBewerken = true }) {
-                        Text("AANPASSEN")
-                            .font(.system(size: 12, weight: .semibold))
-                            .tracking(2)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(Color(white: 0.12))
-                            .cornerRadius(6)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.25), lineWidth: 1))
-                    }
-                    Button(action: { store.logout(); onLogout() }) {
-                        Text("UITLOGGEN")
-                            .font(.system(size: 12, weight: .semibold))
-                            .tracking(2)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(Color(white: 0.12))
-                            .cornerRadius(6)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.25), lineWidth: 1))
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 40)
-                .background(Color.black)
             }
         }
         .fullScreenCover(isPresented: $showBewerken) {
             ArtiesProfielBewerkenView(onLogout: onLogout)
+                .environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showAfspraken) {
+            ArtiesAfsprakenView()
                 .environmentObject(store)
         }
     }
@@ -1159,6 +1149,23 @@ struct ArtiesDashboardView: View {
                         Text(a.woonplaats)
                             .font(.system(size: 12))
                             .foregroundColor(Color(white: 0.35))
+                    }
+                }
+
+                Spacer().frame(height: 4)
+                HStack(spacing: 14) {
+                    Button(action: { showBewerken = true }) {
+                        Text("AANPASSEN")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(Color(white: 0.28))
+                    }
+                    Text("·").foregroundColor(Color(white: 0.15))
+                    Button(action: { store.logout(); onLogout() }) {
+                        Text("UITLOGGEN")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(Color(white: 0.28))
                     }
                 }
             }
@@ -1248,6 +1255,165 @@ struct ArtiesDashboardView: View {
                a.tiktok.isEmpty && a.website.isEmpty &&
                store.portfolioFotos.allSatisfy { $0 == nil } &&
                store.profielFotoData == nil
+    }
+}
+
+// MARK: - Afspraken beheer
+
+struct ArtiesAfsprakenView: View {
+    @EnvironmentObject var store: ArtiesStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var afspraken: [Afspraak] = []
+    @State private var laden = true
+
+    private let datumFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nl_NL")
+        f.dateFormat = "EEE d MMM yyyy · HH:mm"
+        return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+
+                Text("AFSPRAKEN")
+                    .font(.system(size: 22, weight: .black))
+                    .tracking(5)
+                    .foregroundColor(.white)
+
+                Spacer().frame(height: 6)
+
+                Text("Inkomende aanvragen")
+                    .font(.system(size: 11))
+                    .tracking(1.5)
+                    .foregroundColor(Color(white: 0.4))
+
+                Spacer().frame(height: 24)
+
+                if laden {
+                    Spacer()
+                    ProgressView().tint(.white)
+                    Spacer()
+                } else if afspraken.isEmpty {
+                    Spacer()
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color(white: 0.2))
+                    Spacer().frame(height: 16)
+                    Text("Nog geen afspraakaanvragen")
+                        .font(.system(size: 13))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(afspraken) { a in
+                                afspraakRij(a)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
+                    }
+                }
+            }
+
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+        .task {
+            if let email = store.arties?.email {
+                afspraken = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
+            }
+            laden = false
+        }
+    }
+
+    @ViewBuilder
+    private func afspraakRij(_ a: Afspraak) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(a.klantNaam.isEmpty ? a.klantEmail : a.klantNaam)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                Text(datumFormatter.string(from: a.datum))
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.5))
+                    .tracking(0.5)
+                if !a.notitie.isEmpty {
+                    Text(a.notitie)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(white: 0.6))
+                        .lineLimit(2)
+                        .padding(.top, 2)
+                }
+            }
+            Spacer()
+            VStack(spacing: 8) {
+                Button(action: { bevestig(a) }) {
+                    Text("OK")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1)
+                        .foregroundColor(.black)
+                        .frame(width: 52, height: 32)
+                        .background(Color.white)
+                        .cornerRadius(5)
+                }
+                Button(action: { weiger(a) }) {
+                    Text("NEE")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.5))
+                        .frame(width: 52, height: 32)
+                        .background(Color(white: 0.1))
+                        .cornerRadius(5)
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+    }
+
+    private func artiesNaam() -> String {
+        guard let a = store.arties else { return "" }
+        return a.kunstnaam.isEmpty ? "\(a.voornaam) \(a.achternaam)".trimmingCharacters(in: .whitespaces) : a.kunstnaam
+    }
+
+    private func bevestig(_ a: Afspraak) {
+        let naam  = artiesNaam()
+        let subj  = "Afspraak bevestigd – \(naam)"
+        let body  = "Hoi \(a.klantNaam),\n\nJe afspraak op \(datumFormatter.string(from: a.datum)) is bevestigd!\n\nTot dan!\n\(naam)"
+        mailOpen(to: a.klantEmail, subject: subj, body: body)
+    }
+
+    private func weiger(_ a: Afspraak) {
+        let naam  = artiesNaam()
+        let subj  = "Afspraak helaas niet beschikbaar – \(naam)"
+        let body  = "Hoi \(a.klantNaam),\n\nHelaas kan ik op \(datumFormatter.string(from: a.datum)) niet. Neem contact op om een andere datum af te spreken.\n\nMet vriendelijke groet,\n\(naam)"
+        mailOpen(to: a.klantEmail, subject: subj, body: body)
+    }
+
+    private func mailOpen(to: String, subject: String, body: String) {
+        let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "mailto:\(to)?subject=\(s)&body=\(b)") {
+            UIApplication.shared.open(url)
+        }
     }
 }
 

@@ -1273,15 +1273,18 @@ struct KlantDashboardView: View {
         }
         .sheet(isPresented: $showAfspraakShop) {
             if let shop = store.favorietShop {
-                KlantAfspraakAanvraagView(naam: shop.bedrijfsnaam, type: .shop)
+                KlantAfspraakAanvraagView(naam: shop.bedrijfsnaam, email: shop.email, type: .shop)
+                    .environmentObject(store)
             }
         }
         .sheet(isPresented: $showAfspraakArties) {
             if let artiest = store.favorietArties {
                 KlantAfspraakAanvraagView(
-                    naam: artiest.kunstnaam.isEmpty ? artiest.email : artiest.kunstnaam,
-                    type: .artiest
+                    naam:  artiest.kunstnaam.isEmpty ? artiest.email : artiest.kunstnaam,
+                    email: artiest.email,
+                    type:  .artiest
                 )
+                .environmentObject(store)
             }
         }
     }
@@ -2128,8 +2131,10 @@ struct KlantArtiesZoekerView: View {
 enum AfspraakType { case shop, artiest }
 
 struct KlantAfspraakAanvraagView: View {
-    let naam: String
-    let type: AfspraakType
+    let naam:  String
+    let email: String
+    let type:  AfspraakType
+    @EnvironmentObject var store: KlantStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var geselecteerdeDatum = Date().addingTimeInterval(86400)
@@ -2265,10 +2270,15 @@ struct KlantAfspraakAanvraagView: View {
     }
 
     private func stuurAanvraag() {
-        // TODO: sla aanvraag op in CloudKit zodra agenda beschikbaar is in shop/arties flow
         withAnimation { verstuurd = true }
+        let naam   = (store.klant.map { "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) }) ?? ""
+        let kEmail = store.klant?.email ?? ""
+        let a = Afspraak(id: UUID().uuidString, artiesEmail: email,
+                         klantEmail: kEmail, klantNaam: naam,
+                         datum: geselecteerdeDatum, notitie: notitie, status: "aangevraagd")
         Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await CloudKitManager.shared.saveAfspraak(a)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             dismiss()
         }
     }

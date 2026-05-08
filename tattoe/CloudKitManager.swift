@@ -396,6 +396,46 @@ final class CloudKitManager {
     }
 
     // ─────────────────────────────────────────────
+    // MARK: - Afspraken (public DB)
+    // ─────────────────────────────────────────────
+
+    func saveAfspraak(_ afspraak: Afspraak) async {
+        let id     = CKRecord.ID(recordName: "afspraak_\(afspraak.id)")
+        let record = (try? await publicDb.record(for: id)) ?? CKRecord(recordType: "Afspraak", recordID: id)
+        record["artiesEmail"] = afspraak.artiesEmail.lowercased()
+        record["klantEmail"]  = afspraak.klantEmail.lowercased()
+        record["klantNaam"]   = afspraak.klantNaam
+        record["datum"]       = afspraak.datum as NSDate
+        record["notitie"]     = afspraak.notitie
+        record["status"]      = afspraak.status
+        try? await publicDb.save(record)
+    }
+
+    func fetchAfspraken(artiesEmail: String) async -> [Afspraak] {
+        guard !artiesEmail.isEmpty else { return [] }
+        let pred  = NSPredicate(format: "artiesEmail == %@", artiesEmail.lowercased())
+        let query = CKQuery(recordType: "Afspraak", predicate: pred)
+        query.sortDescriptors = [NSSortDescriptor(key: "datum", ascending: true)]
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { afspraakFromRecord($0) }
+    }
+
+    private func afspraakFromRecord(_ r: CKRecord) -> Afspraak? {
+        guard let artiesEmail = r["artiesEmail"] as? String,
+              let datum       = r["datum"]       as? Date else { return nil }
+        let id = r.recordID.recordName.replacingOccurrences(of: "afspraak_", with: "")
+        return Afspraak(
+            id:          id,
+            artiesEmail: artiesEmail,
+            klantEmail:  r["klantEmail"] as? String ?? "",
+            klantNaam:   r["klantNaam"]  as? String ?? "",
+            datum:       datum,
+            notitie:     r["notitie"]    as? String ?? "",
+            status:      r["status"]     as? String ?? "aangevraagd"
+        )
+    }
+
+    // ─────────────────────────────────────────────
     // MARK: - Hulp
     // ─────────────────────────────────────────────
 
