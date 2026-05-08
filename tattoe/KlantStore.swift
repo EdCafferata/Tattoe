@@ -10,21 +10,23 @@ struct ArtiestProfiel: Identifiable, Codable {
     var specialisatie: String
     var woonplaats:   String
     var email:        String
-    var shopEmail:    String = ""
+    var shopEmail:    String = ""    // primaire shop (backward compat)
+    var shopEmails:   [String] = [] // alle shops
     var bio:          String
     var stijlen:      [String]
     var instagram:    String
     var website:      String
 
     init(id: String, kunstnaam: String, specialisatie: String, woonplaats: String,
-         email: String, shopEmail: String = "", bio: String, stijlen: [String],
-         instagram: String, website: String) {
+         email: String, shopEmail: String = "", shopEmails: [String] = [],
+         bio: String, stijlen: [String], instagram: String, website: String) {
         self.id           = id
         self.kunstnaam    = kunstnaam
         self.specialisatie = specialisatie
         self.woonplaats   = woonplaats
         self.email        = email
         self.shopEmail    = shopEmail
+        self.shopEmails   = shopEmails.isEmpty && !shopEmail.isEmpty ? [shopEmail] : shopEmails
         self.bio          = bio
         self.stijlen      = stijlen
         self.instagram    = instagram
@@ -39,6 +41,8 @@ struct ArtiestProfiel: Identifiable, Codable {
         woonplaats   = try c.decode(String.self,    forKey: .woonplaats)
         email        = try c.decode(String.self,    forKey: .email)
         shopEmail    = (try? c.decodeIfPresent(String.self,   forKey: .shopEmail))  ?? ""
+        shopEmails   = (try? c.decodeIfPresent([String].self, forKey: .shopEmails)) ?? []
+        if shopEmails.isEmpty && !shopEmail.isEmpty { shopEmails = [shopEmail] }
         bio          = (try? c.decodeIfPresent(String.self,   forKey: .bio))        ?? ""
         stijlen      = (try? c.decodeIfPresent([String].self, forKey: .stijlen))    ?? []
         instagram    = (try? c.decodeIfPresent(String.self,   forKey: .instagram))  ?? ""

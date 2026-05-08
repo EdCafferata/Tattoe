@@ -118,7 +118,8 @@ final class CloudKitManager {
         record["huisnummer"]    = arties.huisnummer
         record["postcode"]      = arties.postcode
         record["woonplaats"]    = arties.woonplaats
-        record["shopEmail"]     = arties.shopEmail
+        record["shopEmail"]     = arties.shopEmails.first ?? ""   // primaire shop (voor compat)
+        record["shopEmails"]    = arties.shopEmails as NSArray
         record["bio"]           = arties.bio
         record["stijlen"]       = arties.stijlen as NSArray
         record["jarenervaring"] = arties.jarenervaring
@@ -149,6 +150,12 @@ final class CloudKitManager {
 
     private func artiesFromRecord(_ r: CKRecord) -> Arties? {
         guard let am = AuthMethod(rawValue: r["authMethod"] as? String ?? "") else { return nil }
+        // Backward compat: old records have shopEmail (String), new have shopEmails ([String])
+        let shopEmails: [String] = {
+            if let arr = r["shopEmails"] as? [String], !arr.isEmpty { return arr }
+            let old = r["shopEmail"] as? String ?? ""
+            return old.isEmpty ? [] : [old]
+        }()
         return Arties(
             authMethod:    am,
             appleUserID:   r["appleUserID"]   as? String ?? "",
@@ -163,7 +170,7 @@ final class CloudKitManager {
             huisnummer:    r["huisnummer"]     as? String ?? "",
             postcode:      r["postcode"]       as? String ?? "",
             woonplaats:    r["woonplaats"]     as? String ?? "",
-            shopEmail:     r["shopEmail"]      as? String ?? "",
+            shopEmails:    shopEmails,
             bio:           r["bio"]            as? String ?? "",
             stijlen:       r["stijlen"]        as? [String] ?? [],
             jarenervaring: r["jarenervaring"]  as? Int ?? 0,
@@ -308,7 +315,8 @@ final class CloudKitManager {
         record["specialisatie"] = arties.specialisatie
         record["woonplaats"]    = arties.woonplaats
         record["email"]         = arties.email.lowercased()
-        record["shopEmail"]     = arties.shopEmail
+        record["shopEmail"]     = arties.shopEmails.first ?? ""   // primaire shop (voor compat)
+        record["shopEmails"]    = arties.shopEmails as NSArray
         record["bio"]           = arties.bio
         record["stijlen"]       = arties.stijlen as NSArray
         record["instagram"]     = arties.instagram
@@ -326,10 +334,10 @@ final class CloudKitManager {
 
     func fetchArtiesten(voorShop shopEmail: String) async -> [ArtiestProfiel] {
         guard !shopEmail.isEmpty else { return [] }
-        let pred  = NSPredicate(format: "shopEmail == %@", shopEmail.lowercased())
-        let query = CKQuery(recordType: "ArtiestProfiel", predicate: pred)
-        guard let results = try? await publicDb.records(matching: query) else { return [] }
-        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { artiestProfielFromRecord($0) }
+        // Haal alle artiesten op en filter client-side op shopEmails array
+        // (CloudKit ondersteunt geen CONTAINS-query op list fields voor public DB)
+        let alle = await fetchPubliekeArtiesten()
+        return alle.filter { $0.shopEmails.contains(shopEmail.lowercased()) || $0.shopEmail == shopEmail.lowercased() }
     }
 
     func fetchPubliekArties(email: String) async -> ArtiestProfiel? {
@@ -341,13 +349,19 @@ final class CloudKitManager {
 
     private func artiestProfielFromRecord(_ r: CKRecord) -> ArtiestProfiel? {
         guard let email = r["email"] as? String else { return nil }
+        let shopEmails: [String] = {
+            if let arr = r["shopEmails"] as? [String], !arr.isEmpty { return arr }
+            let old = r["shopEmail"] as? String ?? ""
+            return old.isEmpty ? [] : [old]
+        }()
         return ArtiestProfiel(
             id:            email,
             kunstnaam:     r["kunstnaam"]     as? String ?? "",
             specialisatie: r["specialisatie"] as? String ?? "",
             woonplaats:    r["woonplaats"]    as? String ?? "",
             email:         email,
-            shopEmail:     r["shopEmail"]     as? String ?? "",
+            shopEmail:     shopEmails.first ?? "",
+            shopEmails:    shopEmails,
             bio:           r["bio"]           as? String ?? "",
             stijlen:       r["stijlen"]       as? [String] ?? [],
             instagram:     r["instagram"]     as? String ?? "",
