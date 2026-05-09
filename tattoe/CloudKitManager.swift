@@ -247,21 +247,23 @@ final class CloudKitManager {
         let id     = CKRecord.ID(recordName: recordName("shop", shop.appleUserID, shop.email))
         let record = (try? await db.record(for: id)) ?? CKRecord(recordType: "Shop", recordID: id)
 
-        record["userType"]     = "shop"
-        record["authMethod"]   = shop.authMethod.rawValue
-        record["appleUserID"]  = shop.appleUserID
-        record["bedrijfsnaam"] = shop.bedrijfsnaam
-        record["kvk"]          = shop.kvk
-        record["btw"]          = shop.btw
-        record["voornaam"]     = shop.voornaam
-        record["achternaam"]   = shop.achternaam
-        record["email"]        = shop.email
-        record["wachtwoord"]   = shop.wachtwoord
-        record["telefoon"]     = shop.telefoon
-        record["straat"]       = shop.straat
-        record["huisnummer"]   = shop.huisnummer
-        record["postcode"]     = shop.postcode
-        record["woonplaats"]   = shop.woonplaats
+        record["userType"]        = "shop"
+        record["authMethod"]      = shop.authMethod.rawValue
+        record["appleUserID"]     = shop.appleUserID
+        record["bedrijfsnaam"]    = shop.bedrijfsnaam
+        record["kvk"]             = shop.kvk
+        record["btw"]             = shop.btw
+        record["voornaam"]        = shop.voornaam
+        record["achternaam"]      = shop.achternaam
+        record["email"]           = shop.email
+        record["wachtwoord"]      = shop.wachtwoord
+        record["telefoon"]        = shop.telefoon
+        record["straat"]          = shop.straat
+        record["huisnummer"]      = shop.huisnummer
+        record["postcode"]        = shop.postcode
+        record["woonplaats"]      = shop.woonplaats
+        record["registratieDatum"] = shop.registratieDatum as NSDate
+        record["abonnementActief"] = shop.abonnementActief ? 1 : 0
 
         try await db.save(record)
     }
@@ -285,20 +287,22 @@ final class CloudKitManager {
     private func shopFromRecord(_ r: CKRecord) -> Shop? {
         guard let am = AuthMethod(rawValue: r["authMethod"] as? String ?? "") else { return nil }
         return Shop(
-            authMethod:   am,
-            appleUserID:  r["appleUserID"]  as? String ?? "",
-            bedrijfsnaam: r["bedrijfsnaam"] as? String ?? "",
-            kvk:          r["kvk"]          as? String ?? "",
-            btw:          r["btw"]          as? String ?? "",
-            voornaam:     r["voornaam"]     as? String ?? "",
-            achternaam:   r["achternaam"]   as? String ?? "",
-            email:        r["email"]        as? String ?? "",
-            wachtwoord:   r["wachtwoord"]   as? String ?? "",
-            telefoon:     r["telefoon"]     as? String ?? "",
-            straat:       r["straat"]       as? String ?? "",
-            huisnummer:   r["huisnummer"]   as? String ?? "",
-            postcode:     r["postcode"]     as? String ?? "",
-            woonplaats:   r["woonplaats"]   as? String ?? ""
+            authMethod:       am,
+            appleUserID:      r["appleUserID"]       as? String ?? "",
+            bedrijfsnaam:     r["bedrijfsnaam"]      as? String ?? "",
+            kvk:              r["kvk"]               as? String ?? "",
+            btw:              r["btw"]               as? String ?? "",
+            voornaam:         r["voornaam"]          as? String ?? "",
+            achternaam:       r["achternaam"]        as? String ?? "",
+            email:            r["email"]             as? String ?? "",
+            wachtwoord:       r["wachtwoord"]        as? String ?? "",
+            telefoon:         r["telefoon"]          as? String ?? "",
+            straat:           r["straat"]            as? String ?? "",
+            huisnummer:       r["huisnummer"]        as? String ?? "",
+            postcode:         r["postcode"]          as? String ?? "",
+            woonplaats:       r["woonplaats"]        as? String ?? "",
+            registratieDatum: r["registratieDatum"]  as? Date   ?? Date(),
+            abonnementActief: (r["abonnementActief"] as? Int64 ?? 0) == 1
         )
     }
 
