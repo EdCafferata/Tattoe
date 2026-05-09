@@ -263,6 +263,7 @@ final class CloudKitManager {
         record["postcode"]        = shop.postcode
         record["woonplaats"]      = shop.woonplaats
         record["registratieDatum"] = shop.registratieDatum as NSDate
+        record["abonnementType"]   = shop.abonnementType
         record["abonnementActief"] = shop.abonnementActief ? 1 : 0
 
         try await db.save(record)
@@ -302,6 +303,7 @@ final class CloudKitManager {
             postcode:         r["postcode"]          as? String ?? "",
             woonplaats:       r["woonplaats"]        as? String ?? "",
             registratieDatum: r["registratieDatum"]  as? Date   ?? Date(),
+            abonnementType:   r["abonnementType"]    as? String ?? "",
             abonnementActief: (r["abonnementActief"] as? Int64 ?? 0) == 1
         )
     }
