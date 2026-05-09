@@ -16,13 +16,14 @@ struct Shop: Codable {
     var huisnummer:       String
     var postcode:         String
     var woonplaats:       String
-    var registratieDatum: Date = Date()
-    var abonnementActief: Bool = false
+    var registratieDatum: Date   = Date()
+    var abonnementType:   String = ""     // "starter" | "studio" | "pro" | "enterprise"
+    var abonnementActief: Bool   = false  // true = betaald (na trial)
 
     init(authMethod: AuthMethod, appleUserID: String, bedrijfsnaam: String, kvk: String, btw: String,
          voornaam: String, achternaam: String, email: String, wachtwoord: String, telefoon: String,
          straat: String, huisnummer: String, postcode: String, woonplaats: String,
-         registratieDatum: Date = Date(), abonnementActief: Bool = false) {
+         registratieDatum: Date = Date(), abonnementType: String = "", abonnementActief: Bool = false) {
         self.authMethod       = authMethod
         self.appleUserID      = appleUserID
         self.bedrijfsnaam     = bedrijfsnaam
@@ -38,6 +39,7 @@ struct Shop: Codable {
         self.postcode         = postcode
         self.woonplaats       = woonplaats
         self.registratieDatum = registratieDatum
+        self.abonnementType   = abonnementType
         self.abonnementActief = abonnementActief
     }
 
@@ -57,8 +59,9 @@ struct Shop: Codable {
         huisnummer       = try c.decode(String.self,     forKey: .huisnummer)
         postcode         = try c.decode(String.self,     forKey: .postcode)
         woonplaats       = try c.decode(String.self,     forKey: .woonplaats)
-        registratieDatum = (try? c.decodeIfPresent(Date.self, forKey: .registratieDatum)) ?? Date()
-        abonnementActief = (try? c.decodeIfPresent(Bool.self, forKey: .abonnementActief)) ?? false
+        registratieDatum = (try? c.decodeIfPresent(Date.self,   forKey: .registratieDatum)) ?? Date()
+        abonnementType   = (try? c.decodeIfPresent(String.self, forKey: .abonnementType))   ?? ""
+        abonnementActief = (try? c.decodeIfPresent(Bool.self,   forKey: .abonnementActief)) ?? false
     }
 }
 
@@ -76,9 +79,10 @@ class ShopStore: ObservableObject {
         return Date() < verloopdatum
     }
 
+    // Toegang vereist gekozen plan + (betaald OF nog in trial)
     var heeftToegang: Bool {
-        guard shop != nil else { return false }
-        return (shop?.abonnementActief ?? false) || trialActief
+        guard let s = shop, !s.abonnementType.isEmpty else { return false }
+        return s.abonnementActief || trialActief
     }
 
     var dagenResterend: Int {
@@ -110,9 +114,18 @@ class ShopStore: ObservableObject {
         }
     }
 
-    func activeerAbonnement() {
+    // Eerste keuze direct na registratie (trial loopt al)
+    func kiesAbonnement(_ type: String) {
+        guard var s = shop else { return }
+        s.abonnementType = type
+        save(s)
+    }
+
+    // Activeer betaald abonnement na trial (optioneel nieuw type meegeven)
+    func activeerAbonnement(type: String? = nil) {
         guard var s = shop else { return }
         s.abonnementActief = true
+        if let type { s.abonnementType = type }
         save(s)
     }
 

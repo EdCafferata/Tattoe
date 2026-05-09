@@ -1,6 +1,132 @@
 import SwiftUI
 import AuthenticationServices
 
+// MARK: - Abonnement data model
+
+struct AbonnementPlan: Identifiable {
+    let id:           String
+    let naam:         String
+    let prijs:        String    // "" = enterprise / op aanvraag
+    let features:     [String]
+    let isEnterprise: Bool
+}
+
+let shopPlannen: [AbonnementPlan] = [
+    AbonnementPlan(id: "starter",
+                   naam: "STARTER", prijs: "9,99",
+                   features: ["1 artiest", "1 actief apparaat", "1 shop", "Geen website-integratie"],
+                   isEnterprise: false),
+    AbonnementPlan(id: "studio",
+                   naam: "STUDIO", prijs: "49,99",
+                   features: ["Tot 10 artiesten", "2 actieve apparaten", "1 shop", "Geen website-integratie"],
+                   isEnterprise: false),
+    AbonnementPlan(id: "pro",
+                   naam: "PRO", prijs: "99,99",
+                   features: ["Onbeperkte artiesten", "Onbeperkte actieve sessies", "1 shop · 1 locatie"],
+                   isEnterprise: false),
+    AbonnementPlan(id: "enterprise",
+                   naam: "ENTERPRISE", prijs: "",
+                   features: ["Meerdere shops", "Onbeperkte artiesten", "Alle locaties", "Maatwerkoplossing"],
+                   isEnterprise: true),
+]
+
+// MARK: - Gedeelde plan-kaart
+
+struct AbonnementPlanKaart: View {
+    let plan:        AbonnementPlan
+    let knopLabel:   String
+    let gekozen:     Bool
+    let bezig:       Bool
+    let onKies:      () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header: naam + prijs
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(plan.naam)
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(4)
+                        .foregroundColor(plan.isEnterprise ? Color(white: 0.45) : .white)
+                    if gekozen {
+                        Text("GESELECTEERD")
+                            .font(.system(size: 8, weight: .bold))
+                            .tracking(2)
+                            .foregroundColor(Color(white: 0.4))
+                    }
+                }
+                Spacer()
+                if plan.isEnterprise {
+                    Text("OP AANVRAAG")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(2)
+                        .foregroundColor(Color(white: 0.4))
+                        .padding(.top, 2)
+                } else {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text("€")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                            Text(plan.prijs)
+                                .font(.system(size: 26, weight: .black))
+                                .foregroundColor(.white)
+                        }
+                        Text("per maand")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(white: 0.35))
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
+
+            Rectangle().fill(Color(white: 0.12)).frame(height: 1)
+
+            // Features
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(plan.features, id: \.self) { f in
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(white: 0.4))
+                        Text(f)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(white: 0.6))
+                        Spacer()
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+
+            Rectangle().fill(Color(white: 0.12)).frame(height: 1)
+
+            // Knop
+            Button(action: onKies) {
+                Group {
+                    if bezig {
+                        ProgressView().tint(plan.isEnterprise ? Color(white: 0.5) : .black).scaleEffect(0.8)
+                    } else {
+                        Text(knopLabel)
+                            .font(.system(size: 12, weight: .black))
+                            .tracking(3)
+                            .foregroundColor(plan.isEnterprise ? Color(white: 0.55) : .black)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(plan.isEnterprise ? Color(white: 0.1) : Color.white)
+            }
+            .disabled(bezig)
+        }
+        .background(Color(white: 0.065))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(gekozen ? Color(white: 0.45) : Color(white: 0.13), lineWidth: gekozen ? 1.5 : 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 // MARK: - Flow orchestrator
 
 struct ShopFlowView: View {
@@ -13,8 +139,10 @@ struct ShopFlowView: View {
             if store.isLoggedIn, let shop = store.shop {
                 if shop.voornaam.isEmpty {
                     ShopNAWView(onLogout: onLogout)
+                } else if shop.abonnementType.isEmpty {
+                    ShopAbonnementKiezenView(onLogout: onLogout)
                 } else if !store.heeftToegang {
-                    ShopAbonnementView(onLogout: onLogout)
+                    ShopAbonnementVerlopenView(onLogout: onLogout)
                 } else {
                     ShopModeKeuzeView(onLogout: onLogout)
                 }
@@ -921,148 +1049,197 @@ struct ShopDashboardView: View {
     }
 }
 
-// MARK: - Abonnement scherm (proefperiode verlopen)
+// MARK: - Plan kiezen (eerste keer, direct na registratie / NAW)
 
-struct ShopAbonnementView: View {
+struct ShopAbonnementKiezenView: View {
     @EnvironmentObject var store: ShopStore
     let onLogout: () -> Void
 
-    @State private var activeren = false
+    @State private var bezigPlanId: String? = nil
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer()
-
-                ZStack {
-                    Circle()
-                        .fill(Color(white: 0.08))
-                        .frame(width: 90, height: 90)
-                        .overlay(Circle().stroke(Color(white: 0.18), lineWidth: 1))
-                    Image(systemName: "clock.badge.exclamationmark")
-                        .font(.system(size: 36))
-                        .foregroundColor(Color(white: 0.35))
-                }
-
-                Spacer().frame(height: 28)
-
-                Text("PROEFPERIODE VERLOPEN")
-                    .font(.system(size: 20, weight: .black))
-                    .tracking(4)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-
-                Spacer().frame(height: 10)
-
-                Text("Je gratis proefperiode van 30 dagen is verlopen.\nKies een abonnement om door te gaan.")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(white: 0.4))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-
-                Spacer().frame(height: 40)
-
-                // Abonnement kaart
+            ScrollView {
                 VStack(spacing: 0) {
-                    VStack(spacing: 6) {
-                        Text("TATTOE SHOP")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(4)
-                            .foregroundColor(Color(white: 0.4))
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("€")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.white)
-                            Text("19,95")
-                                .font(.system(size: 40, weight: .black))
-                                .foregroundColor(.white)
-                            Text("/ maand")
-                                .font(.system(size: 13))
-                                .foregroundColor(Color(white: 0.4))
+                    Spacer().frame(height: 56)
+
+                    Text("KIES JE PLAN")
+                        .font(.system(size: 26, weight: .black))
+                        .tracking(6)
+                        .foregroundColor(.white)
+
+                    Spacer().frame(height: 8)
+
+                    Text("30 dagen gratis uitproberen")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(white: 0.55))
+
+                    Spacer().frame(height: 4)
+
+                    Text("Geen betaling nodig om te starten.\nNa je proefperiode maandelijks opzegbaar.")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(white: 0.35))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+
+                    Spacer().frame(height: 28)
+
+                    VStack(spacing: 10) {
+                        ForEach(shopPlannen) { plan in
+                            AbonnementPlanKaart(
+                                plan:      plan,
+                                knopLabel: plan.isEnterprise ? "NEEM CONTACT OP" : "GRATIS STARTEN",
+                                gekozen:   false,
+                                bezig:     bezigPlanId == plan.id,
+                                onKies:    { kies(plan) }
+                            )
                         }
                     }
-                    .padding(.top, 28).padding(.bottom, 20)
+                    .padding(.horizontal, 20)
 
-                    Rectangle().fill(Color(white: 0.12)).frame(height: 1)
+                    Spacer().frame(height: 16)
 
-                    VStack(spacing: 12) {
-                        planRij("Onbeperkt afspraken beheren")
-                        planRij("Artiesten aan je shop koppelen")
-                        planRij("Zichtbaar in de Tattoe app")
-                        planRij("Klantprofiel & reviews")
-                    }
-                    .padding(.vertical, 20)
+                    Text("Via App Store · Maandelijks opzegbaar · Geen verborgen kosten")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(white: 0.22))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 60)
                 }
-                .background(Color(white: 0.07))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(white: 0.15), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 24)
+            }
 
-                Spacer().frame(height: 28)
-
-                Button(action: startAbonnement) {
-                    Group {
-                        if activeren {
-                            ProgressView().tint(.black)
-                        } else {
-                            Text("START ABONNEMENT")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(4)
-                                .foregroundColor(.black)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            // UITLOGGEN bovenaan
+            Button(action: { store.logout(); onLogout() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("UITLOGGEN").font(.system(size: 11, weight: .semibold)).tracking(3)
                 }
-                .disabled(activeren)
-                .padding(.horizontal, 24)
+                .foregroundColor(Color(white: 0.3))
+            }
+            .padding(.leading, 24).padding(.top, 16)
+        }
+    }
 
-                Spacer().frame(height: 14)
-
-                Text("Abonnement via App Store (in-app aankoop)")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(white: 0.25))
-
-                Spacer()
-
-                Button(action: { store.logout(); onLogout() }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
-                        Text("UITLOGGEN").font(.system(size: 11, weight: .semibold)).tracking(3)
-                    }
-                    .foregroundColor(Color(white: 0.3))
-                }
-                .padding(.bottom, 40)
+    private func kies(_ plan: AbonnementPlan) {
+        guard bezigPlanId == nil else { return }
+        if plan.isEnterprise {
+            let subj = "Enterprise abonnement aanvraag – \(store.shop?.bedrijfsnaam ?? "")".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let body = "Hallo,\n\nWij zijn geïnteresseerd in het Enterprise abonnement.\n\nShop: \(store.shop?.bedrijfsnaam ?? "")\nEmail: \(store.shop?.email ?? "")".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let url = URL(string: "mailto:info@tattoe.app?subject=\(subj)&body=\(body)") {
+                UIApplication.shared.open(url)
+            }
+            store.kiesAbonnement("enterprise")
+        } else {
+            bezigPlanId = plan.id
+            Task {
+                // TODO: StoreKit trial-start flow hier koppelen
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                store.kiesAbonnement(plan.id)
+                bezigPlanId = nil
             }
         }
     }
+}
 
-    @ViewBuilder
-    private func planRij(_ tekst: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color(white: 0.5))
-            Text(tekst)
-                .font(.system(size: 13))
-                .foregroundColor(Color(white: 0.6))
-            Spacer()
+// MARK: - Abonnement verlopen scherm (na 30 dagen trial)
+
+struct ShopAbonnementVerlopenView: View {
+    @EnvironmentObject var store: ShopStore
+    let onLogout: () -> Void
+
+    @State private var bezigPlanId: String? = nil
+
+    var huidigPlanId: String { store.shop?.abonnementType ?? "" }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 56)
+
+                    ZStack {
+                        Circle()
+                            .fill(Color(white: 0.08))
+                            .frame(width: 70, height: 70)
+                            .overlay(Circle().stroke(Color(white: 0.16), lineWidth: 1))
+                        Image(systemName: "clock.badge.exclamationmark")
+                            .font(.system(size: 28))
+                            .foregroundColor(Color(white: 0.3))
+                    }
+
+                    Spacer().frame(height: 20)
+
+                    Text("PROEFPERIODE VERLOPEN")
+                        .font(.system(size: 22, weight: .black))
+                        .tracking(4)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+
+                    Spacer().frame(height: 8)
+
+                    Text("Kies een abonnement om verder te gaan.\nJe gegevens blijven bewaard.")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(white: 0.35))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+
+                    Spacer().frame(height: 28)
+
+                    VStack(spacing: 10) {
+                        ForEach(shopPlannen) { plan in
+                            AbonnementPlanKaart(
+                                plan:      plan,
+                                knopLabel: plan.isEnterprise ? "NEEM CONTACT OP" : "STARTEN",
+                                gekozen:   plan.id == huidigPlanId,
+                                bezig:     bezigPlanId == plan.id,
+                                onKies:    { kies(plan) }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 20)
+
+                    Spacer().frame(height: 16)
+
+                    Text("Via App Store · Maandelijks opzegbaar")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(white: 0.22))
+
+                    Spacer().frame(height: 60)
+                }
+            }
+
+            Button(action: { store.logout(); onLogout() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("UITLOGGEN").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.3))
+            }
+            .padding(.leading, 24).padding(.top, 16)
         }
-        .padding(.horizontal, 20)
     }
 
-    private func startAbonnement() {
-        guard !activeren else { return }
-        activeren = true
-        Task {
-            // TODO: StoreKit in-app purchase flow hier inbouwen
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            store.activeerAbonnement()
-            activeren = false
+    private func kies(_ plan: AbonnementPlan) {
+        guard bezigPlanId == nil else { return }
+        if plan.isEnterprise {
+            let subj = "Enterprise abonnement – \(store.shop?.bedrijfsnaam ?? "")".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let url = URL(string: "mailto:info@tattoe.app?subject=\(subj)") {
+                UIApplication.shared.open(url)
+            }
+            store.activeerAbonnement(type: "enterprise")
+        } else {
+            bezigPlanId = plan.id
+            Task {
+                // TODO: StoreKit in-app purchase hier koppelen
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                store.activeerAbonnement(type: plan.id)
+                bezigPlanId = nil
+            }
         }
     }
 }
@@ -1116,17 +1293,28 @@ struct ShopModeKeuzeView: View {
                     }
                 }
 
-                if store.trialActief {
-                    Spacer().frame(height: 16)
-                    Text("\(store.dagenResterend) dag\(store.dagenResterend == 1 ? "" : "en") proefperiode resterend")
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(1.5)
-                        .foregroundColor(Color(white: 0.35))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(Color(white: 0.08))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color(white: 0.14), lineWidth: 1))
+                Spacer().frame(height: 14)
+                HStack(spacing: 8) {
+                    if let planNaam = shopPlannen.first(where: { $0.id == store.shop?.abonnementType })?.naam {
+                        Text(planNaam)
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(2.5)
+                            .foregroundColor(Color(white: 0.4))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color(white: 0.08))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color(white: 0.14), lineWidth: 1))
+                    }
+                    if store.trialActief {
+                        Text("\(store.dagenResterend) dagen gratis")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(1.5)
+                            .foregroundColor(Color(white: 0.32))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color(white: 0.07))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color(white: 0.12), lineWidth: 1))
+                    }
                 }
 
                 Spacer().frame(height: 48)
