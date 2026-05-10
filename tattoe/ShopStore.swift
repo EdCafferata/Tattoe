@@ -172,11 +172,11 @@ class ShopStore: ObservableObject {
     }
 
     func logout() {
-        stopSync()
         shop       = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
+        // sync blijft draaien — shop kan altijd aan staan als kiosk
     }
 
     // MARK: - Achtergrond sync elke 5 minuten
