@@ -1797,6 +1797,7 @@ struct ArtiesAfsprakenView: View {
                             .font(.system(size: 11, weight: .semibold)).tracking(1).foregroundColor(.black)
                             .frame(maxWidth: .infinity).frame(height: 32).background(Color.white).cornerRadius(5)
                     }
+                    artiesPrintKnop(a)
                     Button(action: { toonAfzeggen = a }) {
                         Text("Afzeggen")
                             .font(.system(size: 11, weight: .semibold)).tracking(1)
@@ -1805,11 +1806,26 @@ struct ArtiesAfsprakenView: View {
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(red: 0.5, green: 0.15, blue: 0.15), lineWidth: 1))
                     }
                 }
+            } else {
+                artiesPrintKnop(a)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
         .background(Color(white: isBevestigd ? 0.09 : 0.07))
         .overlay(Rectangle().stroke(Color(white: isBevestigd ? 0.18 : 0.1), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func artiesPrintKnop(_ a: Afspraak) -> some View {
+        let naam = store.arties.flatMap { $0.kunstnaam.isEmpty ? $0.voornaam : $0.kunstnaam } ?? ""
+        Button(action: { deelAfspraak(a, afdrukVoor: naam) }) {
+            Label("Printen", systemImage: "printer")
+                .font(.system(size: 11, weight: .semibold)).tracking(1)
+                .foregroundColor(Color(white: 0.5))
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .background(Color(white: 0.08)).cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+        }
     }
 
     @ViewBuilder

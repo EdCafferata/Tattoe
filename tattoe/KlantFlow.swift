@@ -3027,6 +3027,7 @@ struct KlantAfsprakenoverzichtView: View {
                             .frame(maxWidth: .infinity).frame(height: 32)
                             .background(Color.white).cornerRadius(5)
                     }
+                    printKnop(a)
                     Button(action: { toonAfzeggen = a }) {
                         Text("Afzeggen")
                             .font(.system(size: 11, weight: .semibold)).tracking(1)
@@ -3037,19 +3038,37 @@ struct KlantAfsprakenoverzichtView: View {
                     }
                 }
             } else if isActief {
-                Button(action: { toonAfzeggen = a }) {
-                    Text("Intrekken")
-                        .font(.system(size: 11, weight: .semibold)).tracking(1)
-                        .foregroundColor(Color(white: 0.45))
-                        .frame(maxWidth: .infinity).frame(height: 32)
-                        .background(Color(white: 0.08)).cornerRadius(5)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+                HStack(spacing: 8) {
+                    Button(action: { toonAfzeggen = a }) {
+                        Text("Intrekken")
+                            .font(.system(size: 11, weight: .semibold)).tracking(1)
+                            .foregroundColor(Color(white: 0.45))
+                            .frame(maxWidth: .infinity).frame(height: 32)
+                            .background(Color(white: 0.08)).cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+                    }
+                    printKnop(a)
                 }
+            } else {
+                printKnop(a)
             }
         }
         .padding(14)
         .background(Color(white: isBevestigd ? 0.09 : 0.06))
         .overlay(Rectangle().stroke(Color(white: isBevestigd ? 0.18 : 0.1), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func printKnop(_ a: Afspraak) -> some View {
+        let naam = [store.klant?.voornaam, store.klant?.achternaam].compactMap { $0 }.joined(separator: " ")
+        Button(action: { deelAfspraak(a, afdrukVoor: naam) }) {
+            Label("Printen", systemImage: "printer")
+                .font(.system(size: 11, weight: .semibold)).tracking(1)
+                .foregroundColor(Color(white: 0.5))
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .background(Color(white: 0.08)).cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+        }
     }
 
     @ViewBuilder

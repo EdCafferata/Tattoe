@@ -953,6 +953,7 @@ struct ShopDashboardView: View {
     @State private var showBewerken  = false
     @State private var showAfspraken = false
     @State private var showBerichten = false
+    @State private var showBeheer    = false
     @State private var artiesten:    [ArtiestProfiel] = []
 
     var body: some View {
@@ -1050,6 +1051,9 @@ struct ShopDashboardView: View {
         .fullScreenCover(isPresented: $showBerichten) {
             ShopBerichtenView().environmentObject(store)
         }
+        .fullScreenCover(isPresented: $showBeheer) {
+            ShopBeheerView().environmentObject(store)
+        }
         .task {
             if let email = store.shop?.email {
                 artiesten = await CloudKitManager.shared.fetchArtiesten(voorShop: email)
@@ -1088,6 +1092,13 @@ struct ShopDashboardView: View {
                 HStack(spacing: 14) {
                     Button(action: { showBewerken = true }) {
                         Text("AANPASSEN")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(Color(white: 0.28))
+                    }
+                    Text("·").foregroundColor(Color(white: 0.15))
+                    Button(action: { showBeheer = true }) {
+                        Text("BEHEER")
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(2)
                             .foregroundColor(Color(white: 0.28))
@@ -1816,6 +1827,7 @@ struct ShopAfsprakenView: View {
                             .font(.system(size: 11, weight: .semibold)).tracking(1).foregroundColor(.black)
                             .frame(maxWidth: .infinity).frame(height: 32).background(Color.white).cornerRadius(5)
                     }
+                    shopPrintKnop(a)
                     Button(action: { toonAfzeggen = a }) {
                         Text("Afzeggen")
                             .font(.system(size: 11, weight: .semibold)).tracking(1)
@@ -1824,11 +1836,26 @@ struct ShopAfsprakenView: View {
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(red: 0.5, green: 0.15, blue: 0.15), lineWidth: 1))
                     }
                 }
+            } else {
+                shopPrintKnop(a)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
         .background(Color(white: isBevestigd ? 0.09 : 0.07))
         .overlay(Rectangle().stroke(Color(white: isBevestigd ? 0.18 : 0.1), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func shopPrintKnop(_ a: Afspraak) -> some View {
+        let naam = store.shop.map { $0.bedrijfsnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.bedrijfsnaam } ?? ""
+        Button(action: { deelAfspraak(a, afdrukVoor: naam) }) {
+            Label("Printen", systemImage: "printer")
+                .font(.system(size: 11, weight: .semibold)).tracking(1)
+                .foregroundColor(Color(white: 0.5))
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .background(Color(white: 0.08)).cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+        }
     }
 
     @ViewBuilder
@@ -1954,5 +1981,360 @@ struct ShopBerichtenView: View {
         case "geweigerd":                     "xmark.circle"
         default:                              "message"
         }
+    }
+}
+
+// MARK: - Shop Beheer & Administratie
+
+struct ShopBeheerView: View {
+    @EnvironmentObject var store: ShopStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var afspraken:    [Afspraak] = []
+    @State private var laden         = true
+    @State private var geselecteerdJaar = Calendar.current.component(.year, from: Date())
+
+    private var jaren: [Int] {
+        let huidig = Calendar.current.component(.year, from: Date())
+        return Array((huidig - 4)...huidig).reversed()
+    }
+
+    private var afsprakenJaar: [Afspraak] {
+        afspraken.filter {
+            Calendar.current.component(.year, from: $0.datum) == geselecteerdJaar
+        }
+    }
+
+    private var perMaand: [(maand: Int, items: [Afspraak])] {
+        let cal = Calendar.current
+        let groepen = Dictionary(grouping: afsprakenJaar) {
+            cal.component(.month, from: $0.datum)
+        }
+        return (1...12).compactMap { m in
+            guard let items = groepen[m], !items.isEmpty else { return nil }
+            return (maand: m, items: items)
+        }
+    }
+
+    private var bevestigdJaar: [Afspraak] { afsprakenJaar.filter { $0.status == "bevestigd" } }
+
+    private var druksteMaand: String {
+        guard let (m, items) = perMaand.max(by: { $0.items.count < $1.items.count }) else { return "–" }
+        return "\(maandNaam(m)) (\(items.count))"
+    }
+
+    private var meestVoorkomendKlant: String {
+        let counts = Dictionary(grouping: afsprakenJaar) { $0.klantEmail }
+            .mapValues { $0.count }
+        guard let (email, count) = counts.max(by: { $0.value < $1.value }) else { return "–" }
+        let naam = afspraken.first { $0.klantEmail == email }?.klantNaam ?? ""
+        return naam.isEmpty ? "\(email) (\(count)×)" : "\(naam) (\(count)×)"
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+                Text("ADMINISTRATIE")
+                    .font(.system(size: 20, weight: .black)).tracking(5).foregroundColor(.white)
+                Spacer().frame(height: 6)
+                Text("Overzichten & exports")
+                    .font(.system(size: 11)).tracking(1.5).foregroundColor(Color(white: 0.4))
+                Spacer().frame(height: 24)
+
+                // Jaar-kiezer
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(jaren, id: \.self) { jaar in
+                            Button(action: { geselecteerdJaar = jaar }) {
+                                Text("\(jaar)")
+                                    .font(.system(size: 12, weight: .semibold)).tracking(1)
+                                    .foregroundColor(geselecteerdJaar == jaar ? .black : Color(white: 0.4))
+                                    .frame(height: 32).padding(.horizontal, 16)
+                                    .background(geselecteerdJaar == jaar ? Color.white : Color(white: 0.1))
+                                    .cornerRadius(5)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+                Spacer().frame(height: 20)
+
+                if laden {
+                    Spacer(); ProgressView().tint(.white); Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            // Statistieken
+                            beheerSectie("STATISTIEKEN \(geselecteerdJaar)") {
+                                statRij("Totaal afspraken",    "\(afsprakenJaar.count)")
+                                statRij("Bevestigd",           "\(bevestigdJaar.count)")
+                                statRij("Drukste maand",       druksteMaand)
+                                statRij("Meeste klant",        meestVoorkomendKlant)
+                            }
+
+                            // Maandoverzicht
+                            if !perMaand.isEmpty {
+                                beheerSectie("MAANDOVERZICHT") {
+                                    ForEach(perMaand, id: \.maand) { item in
+                                        maandRij(item.maand, items: item.items)
+                                    }
+                                }
+                            } else {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "calendar.badge.exclamationmark")
+                                        .font(.system(size: 30)).foregroundColor(Color(white: 0.2))
+                                    Text("Geen afspraken in \(geselecteerdJaar)")
+                                        .font(.system(size: 13)).foregroundColor(Color(white: 0.3))
+                                }
+                                .padding(40)
+                            }
+
+                            // Exports
+                            beheerSectie("EXPORT") {
+                                exportKnop(
+                                    icon: "tablecells",
+                                    titel: "CSV – Belastingdienst / boekhouding",
+                                    subtitel: "Alle afspraken \(geselecteerdJaar) als spreadsheet",
+                                    actie: exportCSV
+                                )
+                                Divider().background(Color(white: 0.1))
+                                exportKnop(
+                                    icon: "doc.text",
+                                    titel: "PDF – Jaaroverzicht \(geselecteerdJaar)",
+                                    subtitel: "\(bevestigdJaar.count) bevestigde afspraken",
+                                    actie: exportJaaroverzichtPDF
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 24).padding(.bottom, 40)
+                    }
+                }
+            }
+
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24).padding(.top, 16)
+        }
+        .task { await herlaad() }
+    }
+
+    // MARK: Subviews
+
+    @ViewBuilder
+    private func beheerSectie<Content: View>(_ titel: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(titel)
+                .font(.system(size: 9, weight: .bold)).tracking(3)
+                .foregroundColor(Color(white: 0.3))
+                .padding(.horizontal, 16).padding(.top, 20).padding(.bottom, 10)
+            content()
+        }
+        .background(Color(white: 0.06))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+        .padding(.bottom, 2)
+    }
+
+    @ViewBuilder
+    private func statRij(_ label: String, _ waarde: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13)).foregroundColor(Color(white: 0.55))
+            Spacer()
+            Text(waarde)
+                .font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        Divider().background(Color(white: 0.1)).padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private func maandRij(_ maand: Int, items: [Afspraak]) -> some View {
+        let bevestigd = items.filter { $0.status == "bevestigd" }.count
+        HStack {
+            Text(maandNaam(maand))
+                .font(.system(size: 13)).foregroundColor(Color(white: 0.7))
+                .frame(width: 100, alignment: .leading)
+            Text("\(items.count) afspraken")
+                .font(.system(size: 12)).foregroundColor(Color(white: 0.4))
+            Spacer()
+            Text("\(bevestigd) ✓")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(bevestigd > 0 ? Color(white: 0.7) : Color(white: 0.25))
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        Divider().background(Color(white: 0.1)).padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private func exportKnop(icon: String, titel: String, subtitel: String, actie: @escaping () -> Void) -> some View {
+        Button(action: actie) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 18)).foregroundColor(Color(white: 0.4))
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(titel)
+                        .font(.system(size: 13)).foregroundColor(Color(white: 0.8))
+                    Text(subtitel)
+                        .font(.system(size: 11)).foregroundColor(Color(white: 0.35))
+                }
+                Spacer()
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 14)).foregroundColor(Color(white: 0.3))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Acties
+
+    private func herlaad() async {
+        laden = true
+        if let email = store.shop?.email {
+            afspraken = await CloudKitManager.shared.fetchAfspraken(shopEmail: email)
+        }
+        laden = false
+    }
+
+    private func exportCSV() {
+        let url = exportAfsprakenCSV(afsprakenJaar, jaar: geselecteerdJaar)
+        let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        presenteerVC(av)
+    }
+
+    private func exportJaaroverzichtPDF() {
+        let A4 = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let renderer = UIGraphicsPDFRenderer(bounds: A4)
+        let naam = store.shop.map {
+            $0.bedrijfsnaam.isEmpty
+                ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces)
+                : $0.bedrijfsnaam
+        } ?? "Shop"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tattoe_jaaroverzicht_\(geselecteerdJaar).pdf")
+
+        let dfDatum = DateFormatter()
+        dfDatum.locale = Locale(identifier: "nl_NL")
+        dfDatum.dateFormat = "dd MMM yyyy · HH:mm"
+
+        let dfGen = DateFormatter()
+        dfGen.locale = Locale(identifier: "nl_NL")
+        dfGen.dateStyle = .long
+
+        try? renderer.writePDF(to: url) { ctx in
+            var paginaNr = 0
+            func nieuwePagina() {
+                ctx.beginPage()
+                paginaNr += 1
+            }
+
+            func attrs(_ size: CGFloat, _ weight: UIFont.Weight, _ color: UIColor = .black,
+                       kern: CGFloat = 0) -> [NSAttributedString.Key: Any] {
+                var d: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: size, weight: weight),
+                    .foregroundColor: color
+                ]
+                if kern != 0 { d[.kern] = kern }
+                return d
+            }
+
+            let margin: CGFloat = 56
+            nieuwePagina()
+            var y: CGFloat = margin
+
+            // Koptekst
+            "TATTOE".draw(at: CGPoint(x: margin, y: y),
+                          withAttributes: attrs(24, .black, kern: 5))
+            y += 34
+            UIColor.black.setFill()
+            UIBezierPath(rect: CGRect(x: margin, y: y, width: A4.width - margin * 2, height: 1.5)).fill()
+            y += 12
+            "JAAROVERZICHT \(geselecteerdJaar) — \(naam.uppercased())".draw(
+                at: CGPoint(x: margin, y: y),
+                withAttributes: attrs(9, .semibold, .darkGray, kern: 2))
+            y += 30
+
+            // Samenvatting
+            let samenvattingLines = [
+                ("Totaal afspraken",   "\(afsprakenJaar.count)"),
+                ("Bevestigd",          "\(bevestigdJaar.count)"),
+                ("Afgezegd / geweigerd",
+                 "\(afsprakenJaar.filter { ["geannuleerd","geweigerd"].contains($0.status) }.count)"),
+                ("Gegenereerd op",     dfGen.string(from: Date()))
+            ]
+            for (label, waarde) in samenvattingLines {
+                label.draw(at: CGPoint(x: margin, y: y),
+                           withAttributes: attrs(9, .semibold, .gray, kern: 2))
+                waarde.draw(at: CGPoint(x: margin + 160, y: y),
+                            withAttributes: attrs(12, .regular))
+                y += 20
+            }
+            y += 20
+
+            // Per maand
+            let gesorteerd = afsprakenJaar.sorted { $0.datum < $1.datum }
+            let cal = Calendar.current
+            let groepen = Dictionary(grouping: gesorteerd) { cal.component(.month, from: $0.datum) }
+
+            for maand in 1...12 {
+                guard let items = groepen[maand], !items.isEmpty else { continue }
+
+                if y > A4.height - 160 { nieuwePagina(); y = margin }
+
+                // Maandkop
+                UIColor(white: 0.9, alpha: 1).setFill()
+                UIBezierPath(rect: CGRect(x: margin, y: y, width: A4.width - margin * 2, height: 22)).fill()
+                "\(maandNaam(maand).uppercased()) — \(items.count) AFSPRAKEN".draw(
+                    at: CGPoint(x: margin + 8, y: y + 5),
+                    withAttributes: attrs(9, .bold, .darkGray, kern: 2))
+                y += 30
+
+                for a in items {
+                    if y > A4.height - 80 { nieuwePagina(); y = margin }
+                    let datum = dfDatum.string(from: a.datum)
+                    let klant = a.klantNaam.isEmpty ? a.klantEmail : "\(a.klantNaam) <\(a.klantEmail)>"
+                    let status: String = {
+                        switch a.status {
+                        case "bevestigd": return "✓"
+                        case "geannuleerd","geweigerd": return "✗"
+                        default: return "·"
+                        }
+                    }()
+                    "\(status)  \(datum)".draw(at: CGPoint(x: margin, y: y),
+                                               withAttributes: attrs(10, .semibold))
+                    klant.draw(at: CGPoint(x: margin + 20, y: y + 14),
+                               withAttributes: attrs(9, .regular, .darkGray))
+                    y += 32
+                }
+                y += 8
+            }
+
+            // Voettekst
+            let fy = A4.height - 30
+            UIColor(white: 0.8, alpha: 1).setFill()
+            UIBezierPath(rect: CGRect(x: margin, y: fy - 6, width: A4.width - margin * 2, height: 0.5)).fill()
+            "Tattoe App – \(naam) – Jaaroverzicht \(geselecteerdJaar)".draw(
+                at: CGPoint(x: margin, y: fy),
+                withAttributes: attrs(8, .regular, .lightGray))
+        }
+
+        let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        presenteerVC(av)
+    }
+
+    // MARK: Helpers
+
+    private func maandNaam(_ m: Int) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nl_NL")
+        return df.monthSymbols[m - 1].capitalized
     }
 }
