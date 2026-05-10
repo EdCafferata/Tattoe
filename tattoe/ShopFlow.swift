@@ -1402,6 +1402,9 @@ struct ShopModeKeuzeView: View {
             ShopAlsKlantView()
                 .environmentObject(store)
         }
+        .onChange(of: showAlsKlant) { _, nieuw in
+            if !nieuw { store.syncNu() }
+        }
     }
 }
 

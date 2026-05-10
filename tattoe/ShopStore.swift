@@ -179,6 +179,10 @@ class ShopStore: ObservableObject {
         // sync blijft draaien — shop kan altijd aan staan als kiosk
     }
 
+    func syncNu() {
+        Task { await syncVanCloud() }
+    }
+
     // MARK: - Achtergrond sync elke 5 minuten
 
     private func startSync() {
