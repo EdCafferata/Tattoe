@@ -1224,9 +1224,8 @@ struct ShopAbonnementKiezenView: View {
         } else {
             bezigPlanId = plan.id
             Task {
-                // TODO: StoreKit trial-start flow hier koppelen
-                try? await Task.sleep(nanoseconds: 600_000_000)
-                store.kiesAbonnement(plan.id)
+                let success = await store.koopAbonnement(planId: plan.id)
+                if !success { store.kiesAbonnement(plan.id) }
                 bezigPlanId = nil
             }
         }
@@ -1324,9 +1323,7 @@ struct ShopAbonnementVerlopenView: View {
         } else {
             bezigPlanId = plan.id
             Task {
-                // TODO: StoreKit in-app purchase hier koppelen
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                store.activeerAbonnement(type: plan.id)
+                let _ = await store.koopAbonnement(planId: plan.id)
                 bezigPlanId = nil
             }
         }

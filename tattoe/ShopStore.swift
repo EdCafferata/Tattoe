@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import StoreKit
 
 struct Shop: Codable {
     var authMethod:       AuthMethod
@@ -101,6 +102,13 @@ class ShopStore: ObservableObject {
     private var syncTask:   Task<Void, Never>?
     private var gelezenIds: Set<String> = []
 
+    private let storeProductIDs: [String: String] = [
+        "starter": "info.cafferata.tattoe.starter",
+        "studio":  "info.cafferata.tattoe.studio",
+        "pro":     "info.cafferata.tattoe.pro"
+    ]
+    private var transactionListener: Task<Void, Never>?
+
     init() {
         // UITest injection via launch environment
         if let json = ProcessInfo.processInfo.environment["SHOP_TEST_DATA"],
@@ -119,6 +127,39 @@ class ShopStore: ObservableObject {
         }
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
+        transactionListener = Task.detached { [weak self] in
+            for await result in Transaction.updates {
+                guard let self else { return }
+                if case .verified(let tx) = result, tx.revocationDate == nil {
+                    await MainActor.run { self.activeerAbonnement(type: tx.productID.components(separatedBy: ".").last) }
+                    await tx.finish()
+                }
+            }
+        }
+    }
+
+    // MARK: - StoreKit 2 aankoop
+
+    func koopAbonnement(planId: String) async -> Bool {
+        guard let productIDStr = storeProductIDs[planId] else { return false }
+        do {
+            let products = try await Product.products(for: [productIDStr])
+            guard let product = products.first else { return false }
+            let result = try await product.purchase()
+            switch result {
+            case .success(let verification):
+                guard case .verified(let tx) = verification else { return false }
+                activeerAbonnement(type: planId)
+                await tx.finish()
+                return true
+            case .userCancelled, .pending:
+                return false
+            @unknown default:
+                return false
+            }
+        } catch {
+            return false
+        }
     }
 
     func markeerGelezen(_ id: String) {
