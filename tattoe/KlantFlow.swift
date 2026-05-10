@@ -1061,7 +1061,36 @@ private struct TattoePinView: View {
 
 // MARK: - Dashboard
 
-private let amsterdamCoord = CLLocationCoordinate2D(latitude: 52.3676, longitude: 4.9041)
+#if DEBUG
+private let standaardCoord = CLLocationCoordinate2D(latitude: 51.4416, longitude: 5.4697) // Eindhoven
+#else
+private let standaardCoord = CLLocationCoordinate2D(latitude: 52.3676, longitude: 4.9041) // Amsterdam fallback
+#endif
+
+// Wikkelt CLLocationManager zodat SwiftUI de locatie kan observeren
+@MainActor
+@Observable
+final class LocatieBeheerder: NSObject, CLLocationManagerDelegate {
+    var locatie: CLLocationCoordinate2D? = nil
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager.requestWhenInUseAuthorization()
+        manager.requestLocation()
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager,
+                                     didUpdateLocations locations: [CLLocation]) {
+        guard let loc = locations.first else { return }
+        Task { @MainActor in self.locatie = loc.coordinate }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager,
+                                     didFailWithError error: Error) {}
+}
 
 struct KlantDashboardView: View {
     @EnvironmentObject var store: KlantStore
@@ -1083,9 +1112,12 @@ struct KlantDashboardView: View {
     @State private var ladenZoek       = false
     @State private var geselecteerdePin: ShopPin? = nil
     @State private var cameraPosition  = MapCameraPosition.region(MKCoordinateRegion(
-        center: amsterdamCoord,
+        center: standaardCoord,
         span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)
     ))
+    #if !DEBUG
+    @State private var locatieBeheerder = LocatieBeheerder()
+    #endif
     @State private var favorietShopLocatie:   CLLocationCoordinate2D? = nil
     @State private var favorietArtiesLocatie: CLLocationCoordinate2D? = nil
     @State private var showAfspraakShop      = false
@@ -1104,7 +1136,11 @@ struct KlantDashboardView: View {
     }
 
     private var dichtstbijzijndeShops: [ShopPin] {
-        let centrum = amsterdamCoord
+        #if DEBUG
+        let centrum = standaardCoord
+        #else
+        let centrum = locatieBeheerder.locatie ?? standaardCoord
+        #endif
         let metLocatie: [ShopPin] = alleShops.compactMap { shop in
             guard let coord = shopLocaties[shop.email] else { return nil }
             return ShopPin(id: shop.email, naam: shop.bedrijfsnaam, coordinate: coord, email: shop.email)
@@ -1305,6 +1341,16 @@ struct KlantDashboardView: View {
             .animation(.easeInOut(duration: 0.2), value: geselecteerdePin?.id)
         }
         .task { await laadAlles() }
+        #if !DEBUG
+        .onChange(of: locatieBeheerder.locatie?.latitude) { _, _ in
+            guard let loc = locatieBeheerder.locatie else { return }
+            cameraPosition = .region(MKCoordinateRegion(
+                center: loc,
+                span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)
+            ))
+            Task { await zoekTattooshopsOpKaart(nabij: loc) }
+        }
+        #endif
         .onChange(of: store.favorietShop?.email) { _, nieuw in
             guard let email = nieuw else { shopArtiesten = []; return }
             Task {
@@ -1445,10 +1491,30 @@ struct KlantDashboardView: View {
 
         // CloudKit shops ophalen + geocoden (app-shops, witte pins)
         alleShops = await CloudKitManager.shared.fetchPubliekeShops()
+
+        #if DEBUG
+        // Testdata: Dragon Tattoo in Eindhoven
+        let dragonShop = ShopProfiel(
+            id: "debug-dragontattoo@test.nl",
+            bedrijfsnaam: "Dragon Tattoo",
+            woonplaats: "Eindhoven",
+            email: "dragontattoo@test.nl"
+        )
+        if !alleShops.contains(where: { $0.id == dragonShop.id }) {
+            alleShops.append(dragonShop)
+        }
+        shopLocaties[dragonShop.email] = CLLocationCoordinate2D(latitude: 51.4379, longitude: 5.4786)
+        #endif
+
         await geocodeShops()
 
         // Alle tattooshops via Apple Maps zoeken (ook niet in app, rode pins)
-        await zoekTattooshopsOpKaart(nabij: amsterdamCoord)
+        #if DEBUG
+        let centrumVoorZoeken = standaardCoord
+        #else
+        let centrumVoorZoeken = locatieBeheerder.locatie ?? standaardCoord
+        #endif
+        await zoekTattooshopsOpKaart(nabij: centrumVoorZoeken)
 
         ladenKaart = false
 
