@@ -177,10 +177,28 @@ struct ArtiesLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+            #if DEBUG
+            guard !store.isLoggedIn else { return }
+            store.saveLocal(Arties(
+                authMethod:    .apple,
+                appleUserID:   cred.user,
+                voornaam:      cred.fullName?.givenName  ?? "",
+                achternaam:    cred.fullName?.familyName ?? "",
+                email:         cred.email ?? "",
+                wachtwoord:    "",
+                kunstnaam:     "",
+                specialisatie: "",
+                telefoon:      "",
+                straat:        "",
+                huisnummer:    "",
+                postcode:      "",
+                woonplaats:    ""
+            ))
+            #else
             Task {
                 await store.checkCloud(appleUserID: cred.user)
                 if !store.isLoggedIn {
-                    let arties = Arties(
+                    store.save(Arties(
                         authMethod:    .apple,
                         appleUserID:   cred.user,
                         voornaam:      cred.fullName?.givenName  ?? "",
@@ -194,10 +212,10 @@ struct ArtiesLoginView: View {
                         huisnummer:    "",
                         postcode:      "",
                         woonplaats:    ""
-                    )
-                    store.save(arties)
+                    ))
                 }
             }
+            #endif
         case .failure(let err):
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."

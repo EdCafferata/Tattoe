@@ -124,6 +124,18 @@ class KlantStore: ObservableObject {
         Task { try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: consentGegeven) }
     }
 
+    #if DEBUG
+    func saveLocal(_ klant: Klant) {
+        self.klant      = klant
+        self.isLoggedIn = true
+        UserDefaults.standard.set(true, forKey: loginKey)
+        if let data = try? JSONEncoder().encode(klant) {
+            UserDefaults.standard.set(data, forKey: dataKey)
+        }
+        startSync()
+    }
+    #endif
+
     func saveConsent() {
         consentGegeven = true
         UserDefaults.standard.set(true, forKey: consentKey)

@@ -126,6 +126,18 @@ class ArtiesStore: ObservableObject {
         }
     }
 
+    #if DEBUG
+    func saveLocal(_ arties: Arties) {
+        self.arties     = arties
+        self.isLoggedIn = true
+        UserDefaults.standard.set(true, forKey: loginKey)
+        if let data = try? JSONEncoder().encode(arties) {
+            UserDefaults.standard.set(data, forKey: dataKey)
+        }
+        startSync()
+    }
+    #endif
+
     func saveProfielFoto(_ data: Data) {
         let compressed = compress(data)
         profielFotoData = compressed

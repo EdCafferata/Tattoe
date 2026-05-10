@@ -180,13 +180,26 @@ struct KlantAppleLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+            #if DEBUG
+            guard !store.isLoggedIn else { return }
+            store.saveLocal(Klant(
+                authMethod:  .apple,
+                appleUserID: cred.user,
+                voornaam:    cred.fullName?.givenName  ?? "",
+                achternaam:  cred.fullName?.familyName ?? "",
+                email:       cred.email ?? "",
+                wachtwoord:  "",
+                telefoon:    "",
+                straat:      "",
+                huisnummer:  "",
+                postcode:    "",
+                woonplaats:  ""
+            ))
+            #else
             Task {
-                // Eerst CloudKit checken — bestaand account terugzetten
                 await store.checkCloud(appleUserID: cred.user)
-
-                // Alleen nieuw aanmaken als er niets in CloudKit stond
                 if !store.isLoggedIn {
-                    let klant = Klant(
+                    store.save(Klant(
                         authMethod:  .apple,
                         appleUserID: cred.user,
                         voornaam:    cred.fullName?.givenName  ?? "",
@@ -198,10 +211,10 @@ struct KlantAppleLoginView: View {
                         huisnummer:  "",
                         postcode:    "",
                         woonplaats:  ""
-                    )
-                    store.save(klant)
+                    ))
                 }
             }
+            #endif
         case .failure(let err):
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."

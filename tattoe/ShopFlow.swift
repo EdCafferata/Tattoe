@@ -311,10 +311,29 @@ struct ShopLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+            #if DEBUG
+            guard !store.isLoggedIn else { return }
+            store.saveLocal(Shop(
+                authMethod:   .apple,
+                appleUserID:  cred.user,
+                bedrijfsnaam: "",
+                kvk:          "",
+                btw:          "",
+                voornaam:     cred.fullName?.givenName  ?? "",
+                achternaam:   cred.fullName?.familyName ?? "",
+                email:        cred.email ?? "",
+                wachtwoord:   "",
+                telefoon:     "",
+                straat:       "",
+                huisnummer:   "",
+                postcode:     "",
+                woonplaats:   ""
+            ))
+            #else
             Task {
                 await store.checkCloud(appleUserID: cred.user)
                 if !store.isLoggedIn {
-                    let shop = Shop(
+                    store.save(Shop(
                         authMethod:   .apple,
                         appleUserID:  cred.user,
                         bedrijfsnaam: "",
@@ -329,10 +348,10 @@ struct ShopLoginView: View {
                         huisnummer:   "",
                         postcode:     "",
                         woonplaats:   ""
-                    )
-                    store.save(shop)
+                    ))
                 }
             }
+            #endif
         case .failure(let err):
             if (err as NSError).code != ASAuthorizationError.canceled.rawValue {
                 error = "Aanmelden mislukt. Probeer opnieuw."

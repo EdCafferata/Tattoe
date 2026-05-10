@@ -124,6 +124,18 @@ class ShopStore: ObservableObject {
         }
     }
 
+    #if DEBUG
+    func saveLocal(_ shop: Shop) {
+        self.shop       = shop
+        self.isLoggedIn = true
+        UserDefaults.standard.set(true, forKey: loginKey)
+        if let data = try? JSONEncoder().encode(shop) {
+            UserDefaults.standard.set(data, forKey: dataKey)
+        }
+        startSync()
+    }
+    #endif
+
     // Eerste keuze direct na registratie (trial loopt al)
     func kiesAbonnement(_ type: String) {
         guard var s = shop else { return }
