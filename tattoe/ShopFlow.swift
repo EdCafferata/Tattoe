@@ -367,10 +367,11 @@ struct ShopEmailLoginView: View {
     let onLogout: () -> Void
     @Environment(\.dismiss) private var dismiss
 
-    @State private var email      = ""
-    @State private var wachtwoord = ""
+    @State private var email               = ""
+    @State private var wachtwoord          = ""
     @State private var fout: String?
-    @State private var bezig = false
+    @State private var bezig               = false
+    @State private var showWachtwoordReset = false
     @FocusState private var focus: Veld?
 
     enum Veld: Hashable { case email, wachtwoord }
@@ -452,6 +453,12 @@ struct ShopEmailLoginView: View {
                 }
                 .disabled(bezig)
                 .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+                Button(action: { showWachtwoordReset = true }) {
+                    Text("Wachtwoord vergeten?")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.35))
+                }
                 .padding(.bottom, 40)
             }
 
@@ -465,6 +472,9 @@ struct ShopEmailLoginView: View {
             }
             .padding(.leading, 24)
             .padding(.top, 16)
+        }
+        .fullScreenCover(isPresented: $showWachtwoordReset) {
+            WachtwoordResetView(rol: .shop)
         }
     }
 

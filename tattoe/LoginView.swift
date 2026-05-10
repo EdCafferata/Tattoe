@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum UserRole {
     case arties
@@ -180,6 +181,207 @@ struct InkButtonStyle: ButtonStyle {
             .background(configuration.isPressed ? Color(white: 0.1) : Color.black)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(.easeInOut(duration: 0.08), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Wachtwoord reset (gedeeld voor alle drie rollen)
+
+struct WachtwoordResetView: View {
+    let rol: CloudKitManager.ResetRolType
+    @Environment(\.dismiss) private var dismiss
+
+    enum Stap { case email, code }
+
+    @State private var stap:              Stap   = .email
+    @State private var emailInvoer:       String = ""
+    @State private var codeInvoer:        String = ""
+    @State private var nieuwWachtwoord:   String = ""
+    @State private var bevestig:          String = ""
+    @State private var fout:              String?
+    @State private var bezig:             Bool   = false
+    @State private var geslaagd:          Bool   = false
+    @FocusState private var focus:        Veld?
+
+    enum Veld: Hashable { case email, code, wachtwoord, bevestig }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                Text("WACHTWOORD VERGETEN")
+                    .font(.system(size: 22, weight: .black))
+                    .tracking(4)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                Spacer().frame(height: 8)
+
+                Text(stap == .email
+                     ? "Voer je e-mailadres in. Je ontvangt een 6-cijferige resetcode via de Mail-app."
+                     : "Voer de code in die je zojuist via mail hebt ontvangen, en kies een nieuw wachtwoord.")
+                    .font(.system(size: 12))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+
+                Spacer().frame(height: 36)
+
+                if stap == .email {
+                    VStack(spacing: 1) {
+                        InkField("E-MAILADRES", text: $emailInvoer, type: .emailAddress, keyboard: .emailAddress)
+                            .focused($focus, equals: .email)
+                            .submitLabel(.done)
+                            .onSubmit { verstuurCode() }
+                    }
+                    .padding(.horizontal, 24)
+                } else if geslaagd {
+                    VStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color(white: 0.7))
+                        Text("Wachtwoord ingesteld!")
+                            .font(.system(size: 14, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(.white)
+                        Text("Je kunt nu inloggen met je nieuwe wachtwoord.")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(white: 0.4))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                } else {
+                    VStack(spacing: 1) {
+                        InkField("RESETCODE (6 CIJFERS)", text: $codeInvoer, keyboard: .numberPad)
+                            .focused($focus, equals: .code)
+                        InkField("NIEUW WACHTWOORD", text: $nieuwWachtwoord, secure: true)
+                            .focused($focus, equals: .wachtwoord)
+                            .submitLabel(.next)
+                            .onSubmit { focus = .bevestig }
+                        InkField("BEVESTIG WACHTWOORD", text: $bevestig, secure: true)
+                            .focused($focus, equals: .bevestig)
+                            .submitLabel(.done)
+                            .onSubmit { stelIn() }
+                    }
+                    .padding(.horizontal, 24)
+                }
+
+                if let fout {
+                    Spacer().frame(height: 14)
+                    Text(fout)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(red: 1, green: 0.3, blue: 0.3))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+
+                Spacer()
+            }
+
+            // Actie knop onderaan
+            VStack(spacing: 0) {
+                Spacer()
+                if geslaagd {
+                    Button(action: { dismiss() }) {
+                        Text("TERUG NAAR INLOGGEN")
+                            .font(.system(size: 14, weight: .black))
+                            .tracking(3)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                } else {
+                    Button(action: stap == .email ? verstuurCode : stelIn) {
+                        Group {
+                            if bezig {
+                                ProgressView().tint(.black)
+                            } else {
+                                Text(stap == .email ? "STUUR RESETCODE" : "WACHTWOORD INSTELLEN")
+                                    .font(.system(size: 14, weight: .black))
+                                    .tracking(3)
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .disabled(bezig)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                }
+            }
+
+            // TERUG knop
+            Button(action: {
+                if stap == .code && !geslaagd { stap = .email; fout = nil }
+                else { dismiss() }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24)
+            .padding(.top, 16)
+        }
+    }
+
+    private func verstuurCode() {
+        fout = nil; focus = nil
+        let trimmed = emailInvoer.trimmingCharacters(in: .whitespaces).lowercased()
+        guard trimmed.contains("@") else { fout = "Voer een geldig e-mailadres in."; return }
+        bezig = true
+        let code = String(format: "%06d", Int.random(in: 0..<1_000_000))
+        Task {
+            let gelukt = await CloudKitManager.shared.slaResetCodeOp(rol: rol, email: trimmed, code: code)
+            await MainActor.run {
+                bezig = false
+                if gelukt {
+                    openMailApp(email: trimmed, code: code)
+                    stap = .code
+                } else {
+                    fout = "Geen account gevonden met dit e-mailadres."
+                }
+            }
+        }
+    }
+
+    private func stelIn() {
+        fout = nil; focus = nil
+        guard codeInvoer.count == 6 else { fout = "Voer de 6-cijferige code in."; return }
+        guard nieuwWachtwoord.count >= 8 else { fout = "Wachtwoord moet minimaal 8 tekens zijn."; return }
+        guard nieuwWachtwoord == bevestig else { fout = "Wachtwoorden komen niet overeen."; return }
+        bezig = true
+        let trimmed = emailInvoer.trimmingCharacters(in: .whitespaces).lowercased()
+        Task {
+            let err = await CloudKitManager.shared.resetWachtwoord(
+                rol: rol, email: trimmed, code: codeInvoer, nieuwWachtwoord: nieuwWachtwoord)
+            await MainActor.run {
+                bezig = false
+                if let err { fout = err } else { geslaagd = true }
+            }
+        }
+    }
+
+    private func openMailApp(email: String, code: String) {
+        let subject = "Tattoe – je resetcode"
+        let body    = "Je resetcode is: \(code)\n\nDeze code is 15 minuten geldig.\nVoer hem in de Tattoe-app in om je wachtwoord opnieuw in te stellen."
+        let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "mailto:\(email)?subject=\(s)&body=\(b)") {
+            UIApplication.shared.open(url)
+        }
     }
 }
 

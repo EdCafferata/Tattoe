@@ -456,6 +456,58 @@ final class CloudKitManager {
     }
 
     // ─────────────────────────────────────────────
+    // MARK: - Wachtwoord reset
+    // ─────────────────────────────────────────────
+
+    enum ResetRolType { case klant, arties, shop }
+
+    // Sla een 6-cijferige code + vervaltijd op het account record op
+    func slaResetCodeOp(rol: ResetRolType, email: String, code: String) async -> Bool {
+        let recordType: String
+        switch rol {
+        case .klant:  recordType = "Klant"
+        case .arties: recordType = "Arties"
+        case .shop:   recordType = "Shop"
+        }
+        let pred  = NSPredicate(format: "email == %@", email.lowercased())
+        let query = CKQuery(recordType: recordType, predicate: pred)
+        guard let results = try? await db.records(matching: query, resultsLimit: 1),
+              let record  = try? results.matchResults.first?.1.get() else { return false }
+        record["resetCode"]   = code
+        record["resetExpiry"] = Date().addingTimeInterval(15 * 60) as NSDate
+        return (try? await db.save(record)) != nil
+    }
+
+    // Valideer code en update wachtwoord; geeft foutmelding terug of nil bij succes
+    func resetWachtwoord(rol: ResetRolType, email: String, code: String, nieuwWachtwoord: String) async -> String? {
+        let recordType: String
+        switch rol {
+        case .klant:  recordType = "Klant"
+        case .arties: recordType = "Arties"
+        case .shop:   recordType = "Shop"
+        }
+        let pred  = NSPredicate(format: "email == %@", email.lowercased())
+        let query = CKQuery(recordType: recordType, predicate: pred)
+        guard let results = try? await db.records(matching: query, resultsLimit: 1),
+              let record  = try? results.matchResults.first?.1.get() else {
+            return "Geen account gevonden."
+        }
+        guard let opgeslagen = record["resetCode"] as? String, opgeslagen == code else {
+            return "De code klopt niet."
+        }
+        guard let expiry = record["resetExpiry"] as? Date, expiry > Date() else {
+            return "De code is verlopen. Vraag een nieuwe aan."
+        }
+        record["wachtwoord"]  = nieuwWachtwoord
+        record["resetCode"]   = nil as CKRecordValueProtocol?
+        record["resetExpiry"] = nil as CKRecordValueProtocol?
+        guard (try? await db.save(record)) != nil else {
+            return "Opslaan mislukt. Probeer opnieuw."
+        }
+        return nil
+    }
+
+    // ─────────────────────────────────────────────
     // MARK: - Account verwijderen (AVG/GDPR)
     // ─────────────────────────────────────────────
 
