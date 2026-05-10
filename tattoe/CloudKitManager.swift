@@ -423,12 +423,26 @@ final class CloudKitManager {
         let id     = CKRecord.ID(recordName: "afspraak_\(afspraak.id)")
         let record = (try? await publicDb.record(for: id)) ?? CKRecord(recordType: "Afspraak", recordID: id)
         record["artiesEmail"] = afspraak.artiesEmail.lowercased()
+        record["shopEmail"]   = afspraak.shopEmail.lowercased()
         record["klantEmail"]  = afspraak.klantEmail.lowercased()
         record["klantNaam"]   = afspraak.klantNaam
         record["datum"]       = afspraak.datum as NSDate
         record["notitie"]     = afspraak.notitie
         record["status"]      = afspraak.status
         try? await publicDb.save(record)
+    }
+
+    func updateAfspraakStatus(id: String, nieuwStatus: String) async {
+        let ckId   = CKRecord.ID(recordName: "afspraak_\(id)")
+        guard let record = try? await publicDb.record(for: ckId) else { return }
+        record["status"] = nieuwStatus
+        try? await publicDb.save(record)
+    }
+
+    func fetchAfspraak(id: String) async -> Afspraak? {
+        let ckId = CKRecord.ID(recordName: "afspraak_\(id)")
+        guard let record = try? await publicDb.record(for: ckId) else { return nil }
+        return afspraakFromRecord(record)
     }
 
     func fetchAfspraken(artiesEmail: String) async -> [Afspraak] {
@@ -440,6 +454,24 @@ final class CloudKitManager {
         return results.matchResults.compactMap { try? $0.1.get() }.compactMap { afspraakFromRecord($0) }
     }
 
+    func fetchAfspraken(shopEmail: String) async -> [Afspraak] {
+        guard !shopEmail.isEmpty else { return [] }
+        let pred  = NSPredicate(format: "shopEmail == %@", shopEmail.lowercased())
+        let query = CKQuery(recordType: "Afspraak", predicate: pred)
+        query.sortDescriptors = [NSSortDescriptor(key: "datum", ascending: true)]
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { afspraakFromRecord($0) }
+    }
+
+    func fetchAfspraken(klantEmail: String) async -> [Afspraak] {
+        guard !klantEmail.isEmpty else { return [] }
+        let pred  = NSPredicate(format: "klantEmail == %@", klantEmail.lowercased())
+        let query = CKQuery(recordType: "Afspraak", predicate: pred)
+        query.sortDescriptors = [NSSortDescriptor(key: "datum", ascending: false)]
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { afspraakFromRecord($0) }
+    }
+
     private func afspraakFromRecord(_ r: CKRecord) -> Afspraak? {
         guard let artiesEmail = r["artiesEmail"] as? String,
               let datum       = r["datum"]       as? Date else { return nil }
@@ -447,12 +479,71 @@ final class CloudKitManager {
         return Afspraak(
             id:          id,
             artiesEmail: artiesEmail,
-            klantEmail:  r["klantEmail"] as? String ?? "",
-            klantNaam:   r["klantNaam"]  as? String ?? "",
+            shopEmail:   r["shopEmail"]   as? String ?? "",
+            klantEmail:  r["klantEmail"]  as? String ?? "",
+            klantNaam:   r["klantNaam"]   as? String ?? "",
             datum:       datum,
-            notitie:     r["notitie"]    as? String ?? "",
-            status:      r["status"]     as? String ?? "aangevraagd"
+            notitie:     r["notitie"]     as? String ?? "",
+            status:      r["status"]      as? String ?? "aangevraagd"
         )
+    }
+
+    // ─────────────────────────────────────────────
+    // MARK: - Berichten (public DB)
+    // ─────────────────────────────────────────────
+
+    func saveBericht(_ bericht: Bericht) async {
+        let ckId   = CKRecord.ID(recordName: "bericht_\(bericht.id)")
+        let record = CKRecord(recordType: "Bericht", recordID: ckId)
+        record["ontvangerEmail"] = bericht.ontvangerEmail.lowercased()
+        record["ontvangerRol"]   = bericht.ontvangerRol
+        record["type"]           = bericht.type
+        record["tekst"]          = bericht.tekst
+        record["afspraakId"]     = bericht.afspraakId
+        record["datum"]          = bericht.datum as NSDate
+        try? await publicDb.save(record)
+    }
+
+    func fetchBerichten(email: String) async -> [Bericht] {
+        guard !email.isEmpty else { return [] }
+        let pred  = NSPredicate(format: "ontvangerEmail == %@", email.lowercased())
+        let query = CKQuery(recordType: "Bericht", predicate: pred)
+        query.sortDescriptors = [NSSortDescriptor(key: "datum", ascending: false)]
+        guard let results = try? await publicDb.records(matching: query) else { return [] }
+        return results.matchResults.compactMap { try? $0.1.get() }.compactMap { berichtFromRecord($0) }
+    }
+
+    private func berichtFromRecord(_ r: CKRecord) -> Bericht? {
+        guard let email = r["ontvangerEmail"] as? String,
+              let type  = r["type"]           as? String,
+              let tekst = r["tekst"]          as? String,
+              let datum = r["datum"]          as? Date else { return nil }
+        let id = r.recordID.recordName.replacingOccurrences(of: "bericht_", with: "")
+        return Bericht(
+            id:             id,
+            ontvangerEmail: email,
+            ontvangerRol:   r["ontvangerRol"] as? String ?? "",
+            type:           type,
+            tekst:          tekst,
+            afspraakId:     r["afspraakId"]   as? String ?? "",
+            datum:          datum
+        )
+    }
+
+    // Stuur berichten naar alle betrokken partijen bij een statuswijziging
+    func stuurAfspraakBerichten(afspraak: Afspraak, type: String, tekst: String,
+                                 naar: [String], rol: String) async {
+        for email in naar where !email.isEmpty {
+            let b = Bericht(
+                ontvangerEmail: email,
+                ontvangerRol:   rol,
+                type:           type,
+                tekst:          tekst,
+                afspraakId:     afspraak.id,
+                datum:          Date()
+            )
+            await saveBericht(b)
+        }
     }
 
     // ─────────────────────────────────────────────

@@ -952,6 +952,7 @@ struct ShopDashboardView: View {
 
     @State private var showBewerken  = false
     @State private var showAfspraken = false
+    @State private var showBerichten = false
     @State private var artiesten:    [ArtiestProfiel] = []
 
     var body: some View {
@@ -960,6 +961,31 @@ struct ShopDashboardView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     shopHeader
+                    dashSection("BERICHTEN") {
+                        Button(action: { showBerichten = true }) {
+                            HStack {
+                                Image(systemName: "message")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.5))
+                                Text("Berichten")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.7))
+                                Spacer()
+                                if store.ongelezen > 0 {
+                                    Text("\(store.ongelezen)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .frame(minWidth: 20, minHeight: 20)
+                                        .background(Color.white)
+                                        .clipShape(Circle())
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(white: 0.3))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                     dashSection("AFSPRAKEN") {
                         Button(action: { showAfspraken = true }) {
                             HStack {
@@ -1020,6 +1046,9 @@ struct ShopDashboardView: View {
         }
         .fullScreenCover(isPresented: $showAfspraken) {
             ShopAfsprakenView().environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showBerichten) {
+            ShopBerichtenView().environmentObject(store)
         }
         .task {
             if let email = store.shop?.email {
@@ -1631,6 +1660,7 @@ struct ShopAfsprakenView: View {
 
     @State private var afspraken: [Afspraak] = []
     @State private var laden = true
+    @State private var bezig: Set<String> = []
 
     private let datumFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -1686,12 +1716,19 @@ struct ShopAfsprakenView: View {
             }
             .padding(.leading, 24).padding(.top, 16)
         }
-        .task {
-            if let email = store.shop?.email {
-                afspraken = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
-            }
-            laden = false
+        .task { await herlaad() }
+    }
+
+    private func herlaad() async {
+        laden = true
+        if let email = store.shop?.email {
+            let via_shop = await CloudKitManager.shared.fetchAfspraken(shopEmail: email)
+            let via_arties = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
+            let alle = (via_shop + via_arties).reduce(into: [String: Afspraak]()) { $0[$1.id] = $1 }
+            afspraken = alle.values.filter { $0.status != "bevestigd" && $0.status != "geweigerd" }
+                            .sorted { $0.datum < $1.datum }
         }
+        laden = false
     }
 
     @ViewBuilder
@@ -1709,28 +1746,30 @@ struct ShopAfsprakenView: View {
                     Text(a.notitie)
                         .font(.system(size: 12))
                         .foregroundColor(Color(white: 0.6))
-                        .lineLimit(2)
-                        .padding(.top, 2)
+                        .lineLimit(2).padding(.top, 2)
                 }
+                statusLabel(a.status)
             }
             Spacer()
-            VStack(spacing: 8) {
-                Button(action: { bevestig(a) }) {
-                    Text("OK")
-                        .font(.system(size: 11, weight: .bold)).tracking(1)
-                        .foregroundColor(.black)
-                        .frame(width: 52, height: 32)
-                        .background(Color.white)
-                        .cornerRadius(5)
-                }
-                Button(action: { weiger(a) }) {
-                    Text("NEE")
-                        .font(.system(size: 11, weight: .bold)).tracking(1)
-                        .foregroundColor(Color(white: 0.5))
-                        .frame(width: 52, height: 32)
-                        .background(Color(white: 0.1))
-                        .cornerRadius(5)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+            if bezig.contains(a.id) {
+                ProgressView().tint(.white).frame(width: 52)
+            } else if a.status == "aangevraagd" || a.status == "arties_akkoord" {
+                VStack(spacing: 8) {
+                    Button(action: { keur(a, goed: true) }) {
+                        Text("OK")
+                            .font(.system(size: 11, weight: .bold)).tracking(1)
+                            .foregroundColor(.black)
+                            .frame(width: 52, height: 32)
+                            .background(Color.white).cornerRadius(5)
+                    }
+                    Button(action: { keur(a, goed: false) }) {
+                        Text("NEE")
+                            .font(.system(size: 11, weight: .bold)).tracking(1)
+                            .foregroundColor(Color(white: 0.5))
+                            .frame(width: 52, height: 32)
+                            .background(Color(white: 0.1)).cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+                    }
                 }
             }
         }
@@ -1739,30 +1778,127 @@ struct ShopAfsprakenView: View {
         .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
     }
 
-    private func shopNaam() -> String {
-        guard let s = store.shop else { return "" }
-        return s.bedrijfsnaam.isEmpty ? "\(s.voornaam) \(s.achternaam)".trimmingCharacters(in: .whitespaces) : s.bedrijfsnaam
+    @ViewBuilder
+    private func statusLabel(_ status: String) -> some View {
+        let (tekst, kleur): (String, Color) = switch status {
+            case "shop_akkoord":   ("Wacht op artiest", Color.yellow)
+            case "arties_akkoord": ("Artiest akkoord – jouw beurt", Color.orange)
+            case "wacht_klant":    ("Wacht op klant", Color.blue)
+            default:               ("", .clear)
+        }
+        if !tekst.isEmpty {
+            Text(tekst)
+                .font(.system(size: 10, weight: .semibold)).tracking(1)
+                .foregroundColor(kleur)
+        }
     }
 
-    private func bevestig(_ a: Afspraak) {
-        let naam = shopNaam()
-        let subj = "Afspraak bevestigd – \(naam)"
-        let body = "Hoi \(a.klantNaam),\n\nJe afspraak op \(datumFormatter.string(from: a.datum)) is bevestigd!\n\nTot dan!\n\(naam)"
-        mailOpen(to: a.klantEmail, subject: subj, body: body)
+    private func keur(_ a: Afspraak, goed: Bool) {
+        bezig.insert(a.id)
+        Task {
+            if goed { await store.keurAfspraakGoed(a) }
+            else     { await store.weigerAfspraak(a)  }
+            bezig.remove(a.id)
+            await herlaad()
+        }
+    }
+}
+
+// MARK: - Shop Berichten
+
+struct ShopBerichtenView: View {
+    @EnvironmentObject var store: ShopStore
+    @Environment(\.dismiss) private var dismiss
+
+    private let df: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
+        f.dateFormat = "d MMM · HH:mm"; return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+                Text("BERICHTEN")
+                    .font(.system(size: 22, weight: .black)).tracking(5).foregroundColor(.white)
+                Spacer().frame(height: 24)
+                if store.berichten.isEmpty {
+                    Spacer()
+                    Image(systemName: "message").font(.system(size: 40)).foregroundColor(Color(white: 0.2))
+                    Spacer().frame(height: 16)
+                    Text("Geen berichten").font(.system(size: 13)).tracking(1).foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(store.berichten) { b in
+                                berichtRij(b).onAppear { store.markeerGelezen(b.id) }
+                            }
+                        }
+                        .padding(.horizontal, 24).padding(.bottom, 40)
+                    }
+                }
+            }
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24).padding(.top, 16)
+        }
     }
 
-    private func weiger(_ a: Afspraak) {
-        let naam = shopNaam()
-        let subj = "Afspraak helaas niet beschikbaar – \(naam)"
-        let body = "Hoi \(a.klantNaam),\n\nHelaas kan ik op \(datumFormatter.string(from: a.datum)) niet. Neem contact op om een andere datum af te spreken.\n\nMet vriendelijke groet,\n\(naam)"
-        mailOpen(to: a.klantEmail, subject: subj, body: body)
+    @ViewBuilder
+    private func berichtRij(_ b: Bericht) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: iconNaam(b.type))
+                    .font(.system(size: 13)).foregroundColor(kleurVoor(b.type))
+                Text(titeltje(b.type))
+                    .font(.system(size: 10, weight: .bold)).tracking(2).foregroundColor(kleurVoor(b.type))
+                Spacer()
+                Text(df.string(from: b.datum))
+                    .font(.system(size: 10)).foregroundColor(Color(white: 0.35))
+            }
+            Text(b.tekst)
+                .font(.system(size: 13)).foregroundColor(Color(white: 0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
     }
 
-    private func mailOpen(to: String, subject: String, body: String) {
-        let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let url = URL(string: "mailto:\(to)?subject=\(s)&body=\(b)") {
-            UIApplication.shared.open(url)
+    private func titeltje(_ type: String) -> String {
+        switch type {
+        case "aangevraagd":                   "NIEUWE AANVRAAG"
+        case "arties_akkoord","shop_akkoord": "AKKOORD ONTVANGEN"
+        case "bevestigd":                     "AFSPRAAK BEVESTIGD"
+        case "geweigerd":                     "AFSPRAAK GEWEIGERD"
+        default:                              type.uppercased()
+        }
+    }
+
+    private func kleurVoor(_ type: String) -> Color {
+        switch type {
+        case "aangevraagd":                   .orange
+        case "arties_akkoord","shop_akkoord": Color(white: 0.7)
+        case "bevestigd":                     Color(white: 0.7)
+        case "geweigerd":                     Color(red: 0.9, green: 0.3, blue: 0.3)
+        default:                              Color(white: 0.5)
+        }
+    }
+
+    private func iconNaam(_ type: String) -> String {
+        switch type {
+        case "aangevraagd":                   "calendar.badge.plus"
+        case "arties_akkoord","shop_akkoord": "checkmark.circle"
+        case "bevestigd":                     "checkmark.seal"
+        case "geweigerd":                     "xmark.circle"
+        default:                              "message"
         }
     }
 }

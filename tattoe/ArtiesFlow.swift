@@ -1241,6 +1241,7 @@ struct ArtiesDashboardView: View {
     @State private var showBewerken  = false
     @State private var showAfspraken = false
     @State private var showShops     = false
+    @State private var showBerichten = false
 
     private let portfolioColumns = [
         GridItem(.flexible(), spacing: 2),
@@ -1255,6 +1256,33 @@ struct ArtiesDashboardView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     profielHeader
+
+                    // Berichten sectie
+                    dashSection("BERICHTEN") {
+                        Button(action: { showBerichten = true }) {
+                            HStack {
+                                Image(systemName: "message")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.5))
+                                Text("Berichten")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.7))
+                                Spacer()
+                                if store.ongelezen > 0 {
+                                    Text("\(store.ongelezen)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .frame(minWidth: 20, minHeight: 20)
+                                        .background(Color.white)
+                                        .clipShape(Circle())
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(white: 0.3))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     // Afspraken sectie
                     dashSection("AFSPRAKEN") {
@@ -1434,6 +1462,9 @@ struct ArtiesDashboardView: View {
             ArtiesShopsBeheerView()
                 .environmentObject(store)
         }
+        .fullScreenCover(isPresented: $showBerichten) {
+            ArtiesBerichtenView().environmentObject(store)
+        }
     }
 
     // MARK: Header
@@ -1598,6 +1629,7 @@ struct ArtiesAfsprakenView: View {
 
     @State private var afspraken: [Afspraak] = []
     @State private var laden = true
+    @State private var bezig: Set<String> = []
 
     private let datumFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -1665,12 +1697,17 @@ struct ArtiesAfsprakenView: View {
             .padding(.leading, 24)
             .padding(.top, 16)
         }
-        .task {
-            if let email = store.arties?.email {
-                afspraken = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
-            }
-            laden = false
+        .task { await herlaad() }
+    }
+
+    private func herlaad() async {
+        laden = true
+        if let email = store.arties?.email {
+            let direct = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
+            // ook via arties_akkoord/shop_akkoord berichten om te weten dat shop akkoord gaf
+            afspraken = direct.filter { $0.status != "bevestigd" && $0.status != "geweigerd" }
         }
+        laden = false
     }
 
     @ViewBuilder
@@ -1691,60 +1728,58 @@ struct ArtiesAfsprakenView: View {
                         .lineLimit(2)
                         .padding(.top, 2)
                 }
+                statusLabel(a.status)
             }
             Spacer()
-            VStack(spacing: 8) {
-                Button(action: { bevestig(a) }) {
-                    Text("OK")
-                        .font(.system(size: 11, weight: .bold))
-                        .tracking(1)
-                        .foregroundColor(.black)
-                        .frame(width: 52, height: 32)
-                        .background(Color.white)
-                        .cornerRadius(5)
-                }
-                Button(action: { weiger(a) }) {
-                    Text("NEE")
-                        .font(.system(size: 11, weight: .bold))
-                        .tracking(1)
-                        .foregroundColor(Color(white: 0.5))
-                        .frame(width: 52, height: 32)
-                        .background(Color(white: 0.1))
-                        .cornerRadius(5)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+            if bezig.contains(a.id) {
+                ProgressView().tint(.white).frame(width: 52)
+            } else if a.status == "aangevraagd" || a.status == "shop_akkoord" {
+                VStack(spacing: 8) {
+                    Button(action: { keur(a, goed: true) }) {
+                        Text("OK")
+                            .font(.system(size: 11, weight: .bold)).tracking(1)
+                            .foregroundColor(.black)
+                            .frame(width: 52, height: 32)
+                            .background(Color.white).cornerRadius(5)
+                    }
+                    Button(action: { keur(a, goed: false) }) {
+                        Text("NEE")
+                            .font(.system(size: 11, weight: .bold)).tracking(1)
+                            .foregroundColor(Color(white: 0.5))
+                            .frame(width: 52, height: 32)
+                            .background(Color(white: 0.1)).cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+                    }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 14)
         .background(Color(white: 0.07))
         .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
     }
 
-    private func artiesNaam() -> String {
-        guard let a = store.arties else { return "" }
-        return a.kunstnaam.isEmpty ? "\(a.voornaam) \(a.achternaam)".trimmingCharacters(in: .whitespaces) : a.kunstnaam
+    @ViewBuilder
+    private func statusLabel(_ status: String) -> some View {
+        let (tekst, kleur): (String, Color) = switch status {
+            case "arties_akkoord": ("Wacht op shop", Color.yellow)
+            case "shop_akkoord":   ("Shop akkoord – jouw beurt", Color.orange)
+            case "wacht_klant":    ("Wacht op klant", Color.blue)
+            default:               ("", .clear)
+        }
+        if !tekst.isEmpty {
+            Text(tekst)
+                .font(.system(size: 10, weight: .semibold)).tracking(1)
+                .foregroundColor(kleur)
+        }
     }
 
-    private func bevestig(_ a: Afspraak) {
-        let naam  = artiesNaam()
-        let subj  = "Afspraak bevestigd – \(naam)"
-        let body  = "Hoi \(a.klantNaam),\n\nJe afspraak op \(datumFormatter.string(from: a.datum)) is bevestigd!\n\nTot dan!\n\(naam)"
-        mailOpen(to: a.klantEmail, subject: subj, body: body)
-    }
-
-    private func weiger(_ a: Afspraak) {
-        let naam  = artiesNaam()
-        let subj  = "Afspraak helaas niet beschikbaar – \(naam)"
-        let body  = "Hoi \(a.klantNaam),\n\nHelaas kan ik op \(datumFormatter.string(from: a.datum)) niet. Neem contact op om een andere datum af te spreken.\n\nMet vriendelijke groet,\n\(naam)"
-        mailOpen(to: a.klantEmail, subject: subj, body: body)
-    }
-
-    private func mailOpen(to: String, subject: String, body: String) {
-        let s = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let b = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let url = URL(string: "mailto:\(to)?subject=\(s)&body=\(b)") {
-            UIApplication.shared.open(url)
+    private func keur(_ a: Afspraak, goed: Bool) {
+        bezig.insert(a.id)
+        Task {
+            if goed { await store.keurAfspraakGoed(a) }
+            else     { await store.weigerAfspraak(a)  }
+            bezig.remove(a.id)
+            await herlaad()
         }
     }
 }
@@ -2679,5 +2714,106 @@ struct ImportPreviewSheet: View {
         if !applyFotos     { r.profielFotoURL     = ""; r.portfolioFotoURLs = [] }
         onToepassen(r)
         dismiss()
+    }
+}
+
+// MARK: - Arties Berichten
+
+struct ArtiesBerichtenView: View {
+    @EnvironmentObject var store: ArtiesStore
+    @Environment(\.dismiss) private var dismiss
+
+    private var berichten: [Bericht] { store.berichten }
+
+    private let df: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
+        f.dateFormat = "d MMM · HH:mm"; return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+                Text("BERICHTEN")
+                    .font(.system(size: 22, weight: .black)).tracking(5).foregroundColor(.white)
+                Spacer().frame(height: 24)
+                if berichten.isEmpty {
+                    Spacer()
+                    Image(systemName: "message").font(.system(size: 40)).foregroundColor(Color(white: 0.2))
+                    Spacer().frame(height: 16)
+                    Text("Geen berichten").font(.system(size: 13)).tracking(1).foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(berichten) { b in
+                                berichtRij(b).onAppear { store.markeerGelezen(b.id) }
+                            }
+                        }
+                        .padding(.horizontal, 24).padding(.bottom, 40)
+                    }
+                }
+            }
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24).padding(.top, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func berichtRij(_ b: Bericht) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: iconNaam(b.type))
+                    .font(.system(size: 13)).foregroundColor(kleurVoor(b.type))
+                Text(titeltje(b.type))
+                    .font(.system(size: 10, weight: .bold)).tracking(2).foregroundColor(kleurVoor(b.type))
+                Spacer()
+                Text(df.string(from: b.datum))
+                    .font(.system(size: 10)).foregroundColor(Color(white: 0.35))
+            }
+            Text(b.tekst)
+                .font(.system(size: 13)).foregroundColor(Color(white: 0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+    }
+
+    private func titeltje(_ type: String) -> String {
+        switch type {
+        case "aangevraagd":   "NIEUWE AANVRAAG"
+        case "arties_akkoord","shop_akkoord": "AKKOORD ONTVANGEN"
+        case "bevestigd":     "AFSPRAAK BEVESTIGD"
+        case "geweigerd":     "AFSPRAAK GEWEIGERD"
+        default:              type.uppercased()
+        }
+    }
+
+    private func kleurVoor(_ type: String) -> Color {
+        switch type {
+        case "aangevraagd":                   .orange
+        case "arties_akkoord","shop_akkoord": Color(white: 0.7)
+        case "bevestigd":                     Color(white: 0.7)
+        case "geweigerd":                     Color(red: 0.9, green: 0.3, blue: 0.3)
+        default:                              Color(white: 0.5)
+        }
+    }
+
+    private func iconNaam(_ type: String) -> String {
+        switch type {
+        case "aangevraagd":                   "calendar.badge.plus"
+        case "arties_akkoord","shop_akkoord": "checkmark.circle"
+        case "bevestigd":                     "checkmark.seal"
+        case "geweigerd":                     "xmark.circle"
+        default:                              "message"
+        }
     }
 }

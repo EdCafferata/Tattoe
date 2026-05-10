@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UserNotifications
 
 struct Shop: Codable {
     var authMethod:       AuthMethod
@@ -68,8 +69,11 @@ struct Shop: Codable {
 @MainActor
 class ShopStore: ObservableObject {
     @Published var shop:            Shop?
-    @Published var isLoggedIn:      Bool = false
-    @Published var isCheckingCloud: Bool = false
+    @Published var isLoggedIn:      Bool      = false
+    @Published var isCheckingCloud: Bool      = false
+    @Published var berichten:       [Bericht] = []
+
+    var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
 
     static let trialDagen = 30
 
@@ -91,9 +95,11 @@ class ShopStore: ObservableObject {
         return max(0, Calendar.current.dateComponents([.day], from: Date(), to: verloopdatum).day ?? 0)
     }
 
-    private let loginKey  = "shop_logged_in"
-    private let dataKey   = "shop_data"
-    private var syncTask:  Task<Void, Never>?
+    private let loginKey   = "shop_logged_in"
+    private let dataKey    = "shop_data"
+    private let gelezenKey = "shop_gelezen_berichten"
+    private var syncTask:   Task<Void, Never>?
+    private var gelezenIds: Set<String> = []
 
     init() {
         // UITest injection via launch environment
@@ -108,7 +114,51 @@ class ShopStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: dataKey) {
             shop = try? JSONDecoder().decode(Shop.self, from: data)
         }
+        if let arr = UserDefaults.standard.array(forKey: gelezenKey) as? [String] {
+            gelezenIds = Set(arr)
+        }
         if isLoggedIn { startSync() }
+        Task { await requestNotificationPermission() }
+    }
+
+    func markeerGelezen(_ id: String) {
+        gelezenIds.insert(id)
+        UserDefaults.standard.set(Array(gelezenIds), forKey: gelezenKey)
+        updateBadge()
+    }
+
+    func keurAfspraakGoed(_ a: Afspraak) async {
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let datumStr = df.string(from: a.datum)
+        let naam = shop.map { $0.bedrijfsnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.bedrijfsnaam } ?? ""
+        if a.artiesEmail.isEmpty || a.status == "arties_akkoord" {
+            await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "wacht_klant")
+            let b = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
+                            type: "wacht_klant",
+                            tekst: "Goed nieuws! Je afspraakverzoek op \(datumStr) is goedgekeurd. Open de app om te bevestigen.",
+                            afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        } else {
+            await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "shop_akkoord")
+            let b = Bericht(ontvangerEmail: a.artiesEmail, ontvangerRol: "arties",
+                            type: "shop_akkoord",
+                            tekst: "\(naam) heeft akkoord gegeven voor een afspraak op \(datumStr). Geef jij ook akkoord?",
+                            afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        }
+        await laadBerichten()
+    }
+
+    func weigerAfspraak(_ a: Afspraak) async {
+        await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "geweigerd")
+        let naam = shop.map { $0.bedrijfsnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.bedrijfsnaam } ?? ""
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let b = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
+                        type: "geweigerd",
+                        tekst: "Helaas, \(naam) heeft je afspraakverzoek op \(df.string(from: a.datum)) niet kunnen bevestigen.",
+                        afspraakId: a.id, datum: Date())
+        await CloudKitManager.shared.saveBericht(b)
+        await laadBerichten()
     }
 
     func save(_ shop: Shop) {
@@ -191,8 +241,10 @@ class ShopStore: ObservableObject {
     func logout() {
         shop       = nil
         isLoggedIn = false
+        berichten  = []
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
+        updateBadge()
         // sync blijft draaien — shop kan altijd aan staan als kiosk
     }
 
@@ -205,6 +257,7 @@ class ShopStore: ObservableObject {
     private func startSync() {
         syncTask?.cancel()
         syncTask = Task { [weak self] in
+            await self?.syncVanCloud()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
                 guard !Task.isCancelled else { break }
@@ -225,5 +278,22 @@ class ShopStore: ObservableObject {
         if let data = try? JSONEncoder().encode(found) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
+        await laadBerichten()
+    }
+
+    func laadBerichten() async {
+        guard let email = shop?.email, !email.isEmpty else { return }
+        berichten = await CloudKitManager.shared.fetchBerichten(email: email)
+        updateBadge()
+    }
+
+    private func updateBadge() {
+        let n = ongelezen
+        Task { try? await UNUserNotificationCenter.current().setBadgeCount(n) }
+    }
+
+    private func requestNotificationPermission() async {
+        try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.badge])
     }
 }

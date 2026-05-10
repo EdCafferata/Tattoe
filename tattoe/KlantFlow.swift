@@ -1100,6 +1100,7 @@ struct KlantDashboardView: View {
     @State private var showOntdekken    = false
     @State private var showShopZoeker   = false
     @State private var showArtiesZoeker = false
+    @State private var showBerichten    = false
     @State private var shopArtiesten:   [ArtiestProfiel] = []
     @State private var ladenArtiesten   = false
 
@@ -1176,6 +1177,24 @@ struct KlantDashboardView: View {
                                     .font(.system(size: 9, weight: .semibold))
                                     .tracking(2)
                                     .foregroundColor(Color(white: 0.28))
+                            }
+                            Text("·").foregroundColor(Color(white: 0.15))
+                            Button(action: { showBerichten = true }) {
+                                ZStack(alignment: .topTrailing) {
+                                    Text("BERICHTEN")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .tracking(2)
+                                        .foregroundColor(Color(white: 0.28))
+                                    if store.ongelezen > 0 {
+                                        Text("\(store.ongelezen)")
+                                            .font(.system(size: 8, weight: .bold))
+                                            .foregroundColor(.black)
+                                            .frame(minWidth: 14, minHeight: 14)
+                                            .background(Color.white)
+                                            .clipShape(Circle())
+                                            .offset(x: 4, y: -4)
+                                    }
+                                }
                             }
                             Text("·").foregroundColor(Color(white: 0.15))
                             Button(action: { store.logout(); onLogout() }) {
@@ -1380,6 +1399,9 @@ struct KlantDashboardView: View {
         }
         .fullScreenCover(isPresented: $showBewerken) {
             KlantNAWView(onLogout: onLogout).environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showBerichten) {
+            KlantBerichtenView().environmentObject(store)
         }
         .fullScreenCover(isPresented: $showOntdekken) {
             KlantOntdekkenView().environmentObject(store)
@@ -2658,13 +2680,176 @@ struct KlantAfspraakAanvraagView: View {
         withAnimation { verstuurd = true }
         let naam   = (store.klant.map { "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) }) ?? ""
         let kEmail = store.klant?.email ?? ""
-        let a = Afspraak(id: UUID().uuidString, artiesEmail: email,
-                         klantEmail: kEmail, klantNaam: naam,
-                         datum: geselecteerdeDatum, notitie: notitie, status: "aangevraagd")
+        let shopEm = (type == .artiest ? store.favorietShop?.email : nil) ?? ""
+        let artEm  = type == .artiest ? email : ""
+        let shopEm2 = type == .shop ? email : shopEm
+        let a = Afspraak(id: UUID().uuidString,
+                         artiesEmail: artEm,
+                         shopEmail:   shopEm2,
+                         klantEmail:  kEmail,
+                         klantNaam:   naam,
+                         datum:       geselecteerdeDatum,
+                         notitie:     notitie,
+                         status:      "aangevraagd")
         Task {
             await CloudKitManager.shared.saveAfspraak(a)
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+            let tekst = "\(naam.isEmpty ? kEmail : naam) heeft een afspraak aangevraagd op \(df.string(from: a.datum))."
+            if !artEm.isEmpty {
+                let b = Bericht(ontvangerEmail: artEm, ontvangerRol: "arties",
+                                type: "aangevraagd", tekst: tekst, afspraakId: a.id, datum: Date())
+                await CloudKitManager.shared.saveBericht(b)
+            }
+            if !shopEm2.isEmpty {
+                let b = Bericht(ontvangerEmail: shopEm2, ontvangerRol: "shop",
+                                type: "aangevraagd", tekst: tekst, afspraakId: a.id, datum: Date())
+                await CloudKitManager.shared.saveBericht(b)
+            }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             dismiss()
+        }
+    }
+}
+
+// MARK: - Klant Berichten
+
+struct KlantBerichtenView: View {
+    @EnvironmentObject var store: KlantStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var bezig: Set<String> = []
+
+    private let df: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
+        f.dateFormat = "d MMM · HH:mm"; return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+                Text("BERICHTEN")
+                    .font(.system(size: 22, weight: .black)).tracking(5).foregroundColor(.white)
+                Spacer().frame(height: 24)
+
+                if store.berichten.isEmpty {
+                    Spacer()
+                    Image(systemName: "message").font(.system(size: 40)).foregroundColor(Color(white: 0.2))
+                    Spacer().frame(height: 16)
+                    Text("Geen berichten").font(.system(size: 13)).tracking(1).foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(store.berichten) { b in
+                                berichtRij(b)
+                                    .onAppear { store.markeerGelezen(b.id) }
+                            }
+                        }
+                        .padding(.horizontal, 24).padding(.bottom, 40)
+                    }
+                }
+            }
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24).padding(.top, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func berichtRij(_ b: Bericht) -> some View {
+        let ongelezen = !store.berichten.filter { $0.id == b.id }.isEmpty
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: iconNaam(b.type))
+                    .font(.system(size: 13))
+                    .foregroundColor(kleurVoor(b.type))
+                Text(titeltje(b.type))
+                    .font(.system(size: 10, weight: .bold)).tracking(2)
+                    .foregroundColor(kleurVoor(b.type))
+                Spacer()
+                Text(df.string(from: b.datum))
+                    .font(.system(size: 10)).foregroundColor(Color(white: 0.35))
+            }
+            Text(b.tekst)
+                .font(.system(size: 13)).foregroundColor(Color(white: 0.8))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if b.type == "wacht_klant" {
+                HStack(spacing: 10) {
+                    if bezig.contains(b.id) {
+                        ProgressView().tint(.white)
+                    } else {
+                        Button(action: { bevestig(b) }) {
+                            Text("BEVESTIGEN")
+                                .font(.system(size: 11, weight: .bold)).tracking(2)
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity).frame(height: 36)
+                                .background(Color.white).cornerRadius(5)
+                        }
+                        Button(action: { annuleer(b) }) {
+                            Text("ANNULEREN")
+                                .font(.system(size: 11, weight: .bold)).tracking(2)
+                                .foregroundColor(Color(white: 0.5))
+                                .frame(maxWidth: .infinity).frame(height: 36)
+                                .background(Color(white: 0.1)).cornerRadius(5)
+                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(white: 0.07))
+        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+    }
+
+    private func bevestig(_ b: Bericht) {
+        bezig.insert(b.id)
+        Task {
+            await store.bevestigAfspraak(b.afspraakId)
+            bezig.remove(b.id)
+        }
+    }
+
+    private func annuleer(_ b: Bericht) {
+        Task {
+            await CloudKitManager.shared.updateAfspraakStatus(id: b.afspraakId, nieuwStatus: "geweigerd")
+            store.berichten.removeAll { $0.id == b.id }
+        }
+    }
+
+    private func titeltje(_ type: String) -> String {
+        switch type {
+        case "aangevraagd": "AANVRAAG VERSTUURD"
+        case "wacht_klant": "BEVESTIGING NODIG"
+        case "bevestigd":   "BEVESTIGD"
+        case "geweigerd":   "NIET BESCHIKBAAR"
+        default:            type.uppercased()
+        }
+    }
+
+    private func kleurVoor(_ type: String) -> Color {
+        switch type {
+        case "wacht_klant": .orange
+        case "bevestigd":   Color(white: 0.7)
+        case "geweigerd":   Color(red: 0.9, green: 0.3, blue: 0.3)
+        default:            Color(white: 0.5)
+        }
+    }
+
+    private func iconNaam(_ type: String) -> String {
+        switch type {
+        case "wacht_klant": "bell.badge"
+        case "bevestigd":   "checkmark.circle"
+        case "geweigerd":   "xmark.circle"
+        default:            "calendar"
         }
     }
 }

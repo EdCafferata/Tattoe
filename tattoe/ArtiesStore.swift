@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import UserNotifications
 
 struct Arties: Codable {
     var authMethod:    AuthMethod
@@ -97,20 +98,69 @@ class ArtiesStore: ObservableObject {
     @Published var profielFotoData: Data?   = nil
     @Published var portfolioFotos:  [Data?] = Array(repeating: nil, count: 9)
     @Published var voorbeeldFotos:  [Data?] = Array(repeating: nil, count: 9)
+    @Published var berichten:       [Bericht] = []
 
-    private let loginKey  = "arties_logged_in"
-    private let dataKey   = "arties_data"
-    private var syncTask:  Task<Void, Never>?
+    var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
+
+    private let loginKey   = "arties_logged_in"
+    private let dataKey    = "arties_data"
+    private let gelezenKey = "arties_gelezen_berichten"
+    private var syncTask:   Task<Void, Never>?
+    private var gelezenIds: Set<String> = []
 
     init() {
         isLoggedIn = UserDefaults.standard.bool(forKey: loginKey)
         if let data = UserDefaults.standard.data(forKey: dataKey) {
             arties = try? JSONDecoder().decode(Arties.self, from: data)
         }
+        if let arr = UserDefaults.standard.array(forKey: gelezenKey) as? [String] {
+            gelezenIds = Set(arr)
+        }
         profielFotoData = try? Data(contentsOf: profielFotoURL())
         portfolioFotos  = (0..<9).map { try? Data(contentsOf: portfolioFotoURL($0)) }
         voorbeeldFotos  = (0..<9).map { try? Data(contentsOf: voorbeeldFotoURL($0)) }
         if isLoggedIn { startSync() }
+        Task { await requestNotificationPermission() }
+    }
+
+    func markeerGelezen(_ id: String) {
+        gelezenIds.insert(id)
+        UserDefaults.standard.set(Array(gelezenIds), forKey: gelezenKey)
+        updateBadge()
+    }
+
+    func keurAfspraakGoed(_ a: Afspraak) async {
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let datumStr = df.string(from: a.datum)
+        let naam = arties.map { $0.kunstnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.kunstnaam } ?? ""
+        if a.shopEmail.isEmpty || a.status == "shop_akkoord" {
+            await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "wacht_klant")
+            let b = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
+                            type: "wacht_klant",
+                            tekst: "Goed nieuws! Je afspraakverzoek op \(datumStr) is goedgekeurd. Open de app om te bevestigen.",
+                            afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        } else {
+            await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "arties_akkoord")
+            let b = Bericht(ontvangerEmail: a.shopEmail, ontvangerRol: "shop",
+                            type: "arties_akkoord",
+                            tekst: "\(naam) heeft akkoord gegeven voor een afspraak op \(datumStr). Geef jij ook akkoord?",
+                            afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        }
+        await laadBerichten()
+    }
+
+    func weigerAfspraak(_ a: Afspraak) async {
+        await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "geweigerd")
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let naam = arties.map { $0.kunstnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.kunstnaam } ?? ""
+        let b = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
+                        type: "geweigerd",
+                        tekst: "Helaas, \(naam) heeft je afspraakverzoek op \(DateFormatter().string(from: a.datum)) niet kunnen bevestigen.",
+                        afspraakId: a.id, datum: Date())
+        await CloudKitManager.shared.saveBericht(b)
+        await laadBerichten()
     }
 
     func save(_ arties: Arties) {
@@ -219,6 +269,7 @@ class ArtiesStore: ObservableObject {
         profielFotoData = nil
         portfolioFotos  = Array(repeating: nil, count: 9)
         voorbeeldFotos  = Array(repeating: nil, count: 9)
+        berichten       = []
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
         try? FileManager.default.removeItem(at: profielFotoURL())
@@ -226,6 +277,7 @@ class ArtiesStore: ObservableObject {
             try? FileManager.default.removeItem(at: portfolioFotoURL(i))
             try? FileManager.default.removeItem(at: voorbeeldFotoURL(i))
         }
+        updateBadge()
     }
 
     // MARK: - Achtergrond sync elke 10 minuten
@@ -233,6 +285,7 @@ class ArtiesStore: ObservableObject {
     private func startSync() {
         syncTask?.cancel()
         syncTask = Task { [weak self] in
+            await self?.syncVanCloud()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 min
                 guard !Task.isCancelled else { break }
@@ -252,6 +305,23 @@ class ArtiesStore: ObservableObject {
         persistArties(found)
         let fotos = await CloudKitManager.shared.fetchArtiestFotos(arties: found)
         applyFotos(fotos)
+        await laadBerichten()
+    }
+
+    func laadBerichten() async {
+        guard let email = arties?.email, !email.isEmpty else { return }
+        berichten = await CloudKitManager.shared.fetchBerichten(email: email)
+        updateBadge()
+    }
+
+    private func updateBadge() {
+        let n = ongelezen
+        Task { try? await UNUserNotificationCenter.current().setBadgeCount(n) }
+    }
+
+    private func requestNotificationPermission() async {
+        try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.badge])
     }
 
     // MARK: Private

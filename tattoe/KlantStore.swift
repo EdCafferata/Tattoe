@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UserNotifications
 
 enum AuthMethod: String, Codable { case apple, email }
 
@@ -61,11 +62,23 @@ struct ShopProfiel: Identifiable, Codable {
 struct Afspraak: Identifiable, Codable {
     var id:          String = UUID().uuidString
     var artiesEmail: String
+    var shopEmail:   String = ""  // extra goed-te-keuren partij
     var klantEmail:  String
     var klantNaam:   String
     var datum:       Date
     var notitie:     String
-    var status:      String  // "aangevraagd", "bevestigd", "geweigerd"
+    // statussen: aangevraagd → arties_akkoord/shop_akkoord → wacht_klant → bevestigd/geweigerd
+    var status:      String
+}
+
+struct Bericht: Identifiable, Codable {
+    var id:             String = UUID().uuidString
+    var ontvangerEmail: String
+    var ontvangerRol:   String   // "klant" | "arties" | "shop"
+    var type:           String   // "aangevraagd" | "wacht_klant" | "bevestigd" | "geweigerd" | "arties_akkoord" | "shop_akkoord"
+    var tekst:          String
+    var afspraakId:     String
+    var datum:          Date
 }
 
 struct Klant: Codable {
@@ -90,13 +103,18 @@ class KlantStore: ObservableObject {
     @Published var isCheckingCloud:  Bool = false
     @Published var favorietArties:   ArtiestProfiel? = nil
     @Published var favorietShop:     ShopProfiel?    = nil
+    @Published var berichten:        [Bericht]       = []
+
+    var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
 
     private let loginKey          = "klant_logged_in"
     private let dataKey           = "klant_data"
     private let consentKey        = "klant_consent"
     private let favArtiesKey      = "klant_fav_arties"
     private let favShopKey        = "klant_fav_shop"
+    private let gelezenKey        = "klant_gelezen_berichten"
     private var syncTask:          Task<Void, Never>?
+    private var gelezenIds:        Set<String> = []
 
     init() {
         isLoggedIn     = UserDefaults.standard.bool(forKey: loginKey)
@@ -110,7 +128,36 @@ class KlantStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: favShopKey) {
             favorietShop = try? JSONDecoder().decode(ShopProfiel.self, from: data)
         }
+        if let arr = UserDefaults.standard.array(forKey: gelezenKey) as? [String] {
+            gelezenIds = Set(arr)
+        }
         if isLoggedIn { startSync() }
+        Task { await requestNotificationPermission() }
+    }
+
+    func markeerGelezen(_ id: String) {
+        gelezenIds.insert(id)
+        UserDefaults.standard.set(Array(gelezenIds), forKey: gelezenKey)
+        updateBadge()
+    }
+
+    func bevestigAfspraak(_ afspraakId: String) async {
+        guard let a = await CloudKitManager.shared.fetchAfspraak(id: afspraakId) else { return }
+        await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "bevestigd")
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let datumStr = df.string(from: a.datum)
+        let tekst = "Klant heeft de afspraak op \(datumStr) bevestigd! De afspraak is definitief."
+        if !a.artiesEmail.isEmpty {
+            let b = Bericht(ontvangerEmail: a.artiesEmail, ontvangerRol: "arties",
+                            type: "bevestigd", tekst: tekst, afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        }
+        if !a.shopEmail.isEmpty {
+            let b = Bericht(ontvangerEmail: a.shopEmail, ontvangerRol: "shop",
+                            type: "bevestigd", tekst: tekst, afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        }
+        await laadBerichten()
     }
 
     // Lokaal opslaan + CloudKit sync op achtergrond
@@ -245,11 +292,13 @@ class KlantStore: ObservableObject {
         consentGegeven = false
         favorietArties = nil
         favorietShop   = nil
+        berichten      = []
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
         UserDefaults.standard.removeObject(forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: favArtiesKey)
         UserDefaults.standard.removeObject(forKey: favShopKey)
+        updateBadge()
     }
 
     // MARK: - Achtergrond sync elke 10 minuten
@@ -257,6 +306,7 @@ class KlantStore: ObservableObject {
     private func startSync() {
         syncTask?.cancel()
         syncTask = Task { [weak self] in
+            await self?.syncVanCloud()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 min
                 guard !Task.isCancelled else { break }
@@ -286,5 +336,24 @@ class KlantStore: ObservableObject {
                 UserDefaults.standard.set(data, forKey: favArtiesKey)
             }
         }
+        await laadBerichten()
+    }
+
+    private func laadBerichten() async {
+        guard let email = klant?.email, !email.isEmpty else { return }
+        berichten = await CloudKitManager.shared.fetchBerichten(email: email)
+        updateBadge()
+    }
+
+    private func updateBadge() {
+        let n = ongelezen
+        Task {
+            try? await UNUserNotificationCenter.current().setBadgeCount(n)
+        }
+    }
+
+    private func requestNotificationPermission() async {
+        try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.badge])
     }
 }
