@@ -584,6 +584,8 @@ struct KlantNAWView: View {
     @State private var postcode   = ""
     @State private var woonplaats = ""
     @State private var fout: String?
+    @State private var toonVerwijderBevestiging = false
+    @State private var bezig = false
     @FocusState private var focus: Veld?
 
     enum Veld: Hashable {
@@ -650,7 +652,7 @@ struct KlantNAWView: View {
                 }
             }
 
-            // Vaste OPSLAAN knop onderaan
+            // Vaste OPSLAAN + VERWIJDER knoppen onderaan
             VStack(spacing: 0) {
                 Spacer()
                 Button(action: opslaan) {
@@ -664,6 +666,13 @@ struct KlantNAWView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+                Button(action: { toonVerwijderBevestiging = true }) {
+                    Text("ACCOUNT VERWIJDEREN")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(2)
+                        .foregroundColor(Color(red: 0.9, green: 0.25, blue: 0.25))
+                }
                 .padding(.bottom, 40)
             }
 
@@ -679,6 +688,19 @@ struct KlantNAWView: View {
             .padding(.top, 16)
         }
         .onAppear { prefill() }
+        .confirmationDialog("Account permanent verwijderen?", isPresented: $toonVerwijderBevestiging, titleVisibility: .visible) {
+            Button("Verwijderen", role: .destructive) {
+                bezig = true
+                Task {
+                    await store.verwijderAccount()
+                    onLogout()
+                    dismiss()
+                }
+            }
+            Button("Annuleren", role: .cancel) {}
+        } message: {
+            Text("Al je gegevens worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt.")
+        }
     }
 
     private func prefill() {

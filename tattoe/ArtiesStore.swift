@@ -207,6 +207,11 @@ class ArtiesStore: ObservableObject {
         return nil
     }
 
+    func verwijderAccount() async {
+        if let a = arties { await CloudKitManager.shared.verwijderArties(a) }
+        logout()
+    }
+
     func logout() {
         stopSync()
         arties          = nil

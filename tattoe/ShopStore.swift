@@ -183,6 +183,11 @@ class ShopStore: ObservableObject {
         return nil
     }
 
+    func verwijderAccount() async {
+        if let s = shop { await CloudKitManager.shared.verwijderShop(s) }
+        logout()
+    }
+
     func logout() {
         shop       = nil
         isLoggedIn = false

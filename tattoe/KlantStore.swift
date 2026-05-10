@@ -233,6 +233,11 @@ class KlantStore: ObservableObject {
         return nil
     }
 
+    func verwijderAccount() async {
+        if let k = klant { await CloudKitManager.shared.verwijderKlant(k) }
+        logout()
+    }
+
     func logout() {
         stopSync()
         klant          = nil

@@ -1762,7 +1762,8 @@ struct ArtiesProfielBewerkenView: View {
     @State private var tiktok        = ""
     @State private var website       = ""
 
-    @State private var bezig = false
+    @State private var bezig                    = false
+    @State private var toonVerwijderBevestiging = false
 
     // URL importer
     @State private var importURL          = ""
@@ -1840,7 +1841,7 @@ struct ArtiesProfielBewerkenView: View {
                 }
             }
 
-            // Vaste OPSLAAN knop
+            // Vaste OPSLAAN + VERWIJDER knoppen
             VStack(spacing: 0) {
                 Spacer()
                 Button(action: opslaan) {
@@ -1861,6 +1862,14 @@ struct ArtiesProfielBewerkenView: View {
                 }
                 .disabled(bezig)
                 .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+                Button(action: { toonVerwijderBevestiging = true }) {
+                    Text("ACCOUNT VERWIJDEREN")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(2)
+                        .foregroundColor(Color(red: 0.9, green: 0.25, blue: 0.25))
+                }
+                .disabled(bezig)
                 .padding(.bottom, 40)
             }
 
@@ -1876,6 +1885,19 @@ struct ArtiesProfielBewerkenView: View {
             .padding(.top, 16)
         }
         .onAppear { prefill() }
+        .confirmationDialog("Account permanent verwijderen?", isPresented: $toonVerwijderBevestiging, titleVisibility: .visible) {
+            Button("Verwijderen", role: .destructive) {
+                bezig = true
+                Task {
+                    await store.verwijderAccount()
+                    onLogout()
+                    dismiss()
+                }
+            }
+            Button("Annuleren", role: .cancel) {}
+        } message: {
+            Text("Je profiel, portfolio en alle gegevens worden definitief verwijderd.")
+        }
         .photosPicker(
             isPresented: Binding(
                 get: { fotoDoel != nil },

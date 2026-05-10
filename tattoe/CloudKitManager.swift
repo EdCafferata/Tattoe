@@ -456,6 +456,29 @@ final class CloudKitManager {
     }
 
     // ─────────────────────────────────────────────
+    // MARK: - Account verwijderen (AVG/GDPR)
+    // ─────────────────────────────────────────────
+
+    func verwijderKlant(_ klant: Klant) async {
+        let id = CKRecord.ID(recordName: recordName("klant", klant.appleUserID, klant.email))
+        try? await db.deleteRecord(withID: id)
+    }
+
+    func verwijderArties(_ arties: Arties) async {
+        let privID = CKRecord.ID(recordName: recordName("arties", arties.appleUserID, arties.email))
+        let pubID  = CKRecord.ID(recordName: "artiestprofiel_\(arties.email.lowercased())")
+        try? await db.deleteRecord(withID: privID)
+        try? await publicDb.deleteRecord(withID: pubID)
+    }
+
+    func verwijderShop(_ shop: Shop) async {
+        let privID = CKRecord.ID(recordName: recordName("shop", shop.appleUserID, shop.email))
+        let pubID  = CKRecord.ID(recordName: "shopprofiel_\(shop.email.lowercased())")
+        try? await db.deleteRecord(withID: privID)
+        try? await publicDb.deleteRecord(withID: pubID)
+    }
+
+    // ─────────────────────────────────────────────
     // MARK: - Hulp
     // ─────────────────────────────────────────────
 
