@@ -1533,17 +1533,12 @@ struct KlantDashboardView: View {
         alleShops = await CloudKitManager.shared.fetchPubliekeShops()
 
         #if DEBUG
-        // Testdata: Dragon Tattoo in Eindhoven
-        let dragonShop = ShopProfiel(
-            id: "debug-dragontattoo@test.nl",
-            bedrijfsnaam: "Dragon Tattoo",
-            woonplaats: "Eindhoven",
-            email: "dragontattoo@test.nl"
-        )
-        if !alleShops.contains(where: { $0.id == dragonShop.id }) {
-            alleShops.append(dragonShop)
+        for shop in TestData.shops where !alleShops.contains(where: { $0.id == shop.id }) {
+            alleShops.append(shop)
         }
-        shopLocaties[dragonShop.email] = CLLocationCoordinate2D(latitude: 51.4379, longitude: 5.4786)
+        for (email, coord) in TestData.shopLocaties {
+            shopLocaties[email] = coord
+        }
         #endif
 
         await geocodeShops()
@@ -1909,6 +1904,14 @@ struct KlantOntdekkenView: View {
         async let a = CloudKitManager.shared.fetchPubliekeArtiesten()
         shops     = await s
         artiesten = await a
+        #if DEBUG
+        for shop in TestData.shops where !shops.contains(where: { $0.id == shop.id }) {
+            shops.insert(shop, at: 0)
+        }
+        for arties in TestData.artiesten where !artiesten.contains(where: { $0.id == arties.id }) {
+            artiesten.insert(arties, at: 0)
+        }
+        #endif
         laden = false
     }
 }
@@ -3090,6 +3093,11 @@ struct KlantAfsprakenoverzichtView: View {
             let all = await CloudKitManager.shared.fetchAfspraken(klantEmail: email)
             afspraken = all.sorted { $0.datum > $1.datum }
         }
+        #if DEBUG
+        let testIds = Set(afspraken.map { $0.id })
+        let extra = TestData.afsprakenKlant.filter { !testIds.contains($0.id) }
+        afspraken = (extra + afspraken).sorted { $0.datum > $1.datum }
+        #endif
         laden = false
     }
 }

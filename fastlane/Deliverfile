@@ -1,0 +1,30 @@
+app_identifier "info.cafferata.tattoe"
+username "ed@cafferata.info"
+
+# Metadata talen
+languages ["nl-NL"]
+
+# Categorie
+primary_category "LIFESTYLE"
+secondary_category "BUSINESS"
+
+# Leeftijdsclassificatie — geen schadelijke content
+app_rating_config_path "./fastlane/metadata/rating_config.json"
+
+# Geen screenshots uploaden (handmatig via Xcode)
+skip_screenshots true
+
+# Wel metadata uploaden
+skip_metadata false
+
+# Automatisch submit na upload
+submit_for_review false
+
+# Review info
+submission_information({
+  add_id_info_uses_idfa: false,
+  export_compliance_uses_encryption: false,
+  export_compliance_is_exempt: false,
+  content_rights_has_third_party_content: false,
+  add_id_info_serves_ads: false
+})

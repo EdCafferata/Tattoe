@@ -1,0 +1,20 @@
+Tattoe verbindt klanten, tattoo artiesten en shops op één platform.
+
+VOOR KLANTEN
+Ontdek tattoo artiesten bij jou in de buurt. Bekijk hun portfolio, stijlen en sociale media. Plan je afspraak direct via de app en beheer al je boekingen op één plek.
+
+VOOR TATTOO ARTIESTEN
+Presenteer jezelf professioneel. Upload je portfolio, stel je stijlen in, en koppel je social media accounts. Importeer je profiel direct van je eigen website. Ontvang en beheer afspraken via de app.
+
+VOOR SHOPS
+Beheer je tattoo shop volledig digitaal. Voeg artiesten toe aan je shop, publiceer een shop-profiel en laat klanten afspraken inplannen. Kies het abonnement dat bij jouw shop past — van starter tot enterprise.
+
+KENMERKEN
+• Inloggen met Apple of e-mail
+• Portfolio met tot 9 foto's per artiest
+• Automatische profielimport vanuit je website
+• Afsprakenbeheer voor alle drie rollen
+• Realtime synchronisatie via CloudKit
+• Volledig AVG/GDPR-conform met accountverwijdering
+
+Tattoe maakt het boeken van een tattoo zo eenvoudig mogelijk — voor iedereen.
