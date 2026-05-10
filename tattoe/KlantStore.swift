@@ -106,6 +106,8 @@ class KlantStore: ObservableObject {
     @Published var berichten:        [Bericht]       = []
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
+    @Published var afsprakenaandacht: Int = 0
+    var aandacht: Int { ongelezen + afsprakenaandacht }
 
     private let loginKey          = "klant_logged_in"
     private let dataKey           = "klant_data"
@@ -368,14 +370,19 @@ class KlantStore: ObservableObject {
         let extra = TestData.berichtenKlant.filter { !bestaandeIds.contains($0.id) }
         berichten = (extra + berichten).sorted { $0.datum > $1.datum }
         #endif
+        await laadAfsprakenaandacht()
         updateBadge()
     }
 
+    private func laadAfsprakenaandacht() async {
+        guard let email = klant?.email, !email.isEmpty else { return }
+        let alle = await CloudKitManager.shared.fetchAfspraken(klantEmail: email)
+        afsprakenaandacht = alle.filter { $0.status == "wacht_klant" }.count
+    }
+
     private func updateBadge() {
-        let n = ongelezen
-        Task {
-            try? await UNUserNotificationCenter.current().setBadgeCount(n)
-        }
+        let n = aandacht
+        Task { try? await UNUserNotificationCenter.current().setBadgeCount(n) }
     }
 
     private func requestNotificationPermission() async {

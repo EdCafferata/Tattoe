@@ -75,6 +75,8 @@ class ShopStore: ObservableObject {
     @Published var berichten:       [Bericht] = []
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
+    @Published var afsprakenaandacht: Int = 0
+    var aandacht: Int { ongelezen + afsprakenaandacht }
 
     static let trialDagen = 30
 
@@ -381,11 +383,18 @@ class ShopStore: ObservableObject {
         let extra = TestData.berichtenShop.filter { !bestaandeIds.contains($0.id) }
         berichten = (extra + berichten).sorted { $0.datum > $1.datum }
         #endif
+        await laadAfsprakenaandacht()
         updateBadge()
     }
 
+    private func laadAfsprakenaandacht() async {
+        guard let email = shop?.email, !email.isEmpty else { return }
+        let alle = await CloudKitManager.shared.fetchAfspraken(shopEmail: email)
+        afsprakenaandacht = alle.filter { ["aangevraagd", "arties_akkoord"].contains($0.status) }.count
+    }
+
     private func updateBadge() {
-        let n = ongelezen
+        let n = aandacht
         Task { try? await UNUserNotificationCenter.current().setBadgeCount(n) }
     }
 

@@ -1257,6 +1257,13 @@ struct ArtiesDashboardView: View {
                 VStack(spacing: 0) {
                     profielHeader
 
+                    AandachtBanner(
+                        berichten:  store.ongelezen,
+                        afspraken:  store.afsprakenaandacht,
+                        onBerichten:  { showBerichten = true },
+                        onAfspraken:  { showAfspraken = true }
+                    )
+
                     // Berichten sectie
                     dashSection("BERICHTEN") {
                         Button(action: { showBerichten = true }) {

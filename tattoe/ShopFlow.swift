@@ -962,6 +962,14 @@ struct ShopDashboardView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     shopHeader
+
+                    AandachtBanner(
+                        berichten:  store.ongelezen,
+                        afspraken:  store.afsprakenaandacht,
+                        onBerichten:  { showBerichten = true },
+                        onAfspraken:  { showAfspraken = true }
+                    )
+
                     dashSection("BERICHTEN") {
                         Button(action: { showBerichten = true }) {
                             HStack {

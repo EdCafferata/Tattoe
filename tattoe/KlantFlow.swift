@@ -1160,6 +1160,13 @@ struct KlantDashboardView: View {
             VStack(spacing: 0) {
                 Spacer().frame(height: 52)
 
+                AandachtBanner(
+                    berichten:  store.ongelezen,
+                    afspraken:  store.afsprakenaandacht,
+                    onBerichten:  { showBerichten = true },
+                    onAfspraken:  { showAfsprakenoverzicht = true }
+                )
+
                     // ── Header ──────────────────────────────
                     VStack(spacing: 5) {
                         Text("WELKOM TERUG")

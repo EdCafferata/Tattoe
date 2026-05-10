@@ -101,6 +101,8 @@ class ArtiesStore: ObservableObject {
     @Published var berichten:       [Bericht] = []
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
+    @Published var afsprakenaandacht: Int = 0
+    var aandacht: Int { ongelezen + afsprakenaandacht }
 
     private let loginKey   = "arties_logged_in"
     private let dataKey    = "arties_data"
@@ -333,11 +335,18 @@ class ArtiesStore: ObservableObject {
         let extra = TestData.berichtenArties.filter { !bestaandeIds.contains($0.id) }
         berichten = (extra + berichten).sorted { $0.datum > $1.datum }
         #endif
+        await laadAfsprakenaandacht()
         updateBadge()
     }
 
+    private func laadAfsprakenaandacht() async {
+        guard let email = arties?.email, !email.isEmpty else { return }
+        let alle = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
+        afsprakenaandacht = alle.filter { ["aangevraagd", "shop_akkoord"].contains($0.status) }.count
+    }
+
     private func updateBadge() {
-        let n = ongelezen
+        let n = aandacht
         Task { try? await UNUserNotificationCenter.current().setBadgeCount(n) }
     }
 
