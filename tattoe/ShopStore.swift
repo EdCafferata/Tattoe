@@ -127,18 +127,52 @@ class ShopStore: ObservableObject {
         }
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
+        Task { await self.controleerAbonnementen() }
         transactionListener = Task.detached { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
-                if case .verified(let tx) = result, tx.revocationDate == nil {
-                    await MainActor.run { self.activeerAbonnement(type: tx.productID.components(separatedBy: ".").last) }
+                if case .verified(let tx) = result {
+                    await self.verwerkTransactie(tx)
                     await tx.finish()
                 }
             }
         }
     }
 
-    // MARK: - StoreKit 2 aankoop
+    // MARK: - StoreKit 2
+
+    // Herstel actief abonnement bij app-start en na herinstallatie
+    func controleerAbonnementen() async {
+        var actief = false
+        var planId: String? = nil
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let tx) = result,
+               storeProductIDs.values.contains(tx.productID) {
+                actief = true
+                planId = tx.productID.components(separatedBy: ".").last
+            }
+        }
+        if actief, let plan = planId {
+            activeerAbonnement(type: plan)
+        } else if shop?.abonnementActief == true, !trialActief {
+            // Abonnement is verlopen of ingetrokken — deactiveer
+            guard var s = shop else { return }
+            s.abonnementActief = false
+            save(s)
+        }
+    }
+
+    private func verwerkTransactie(_ tx: Transaction) async {
+        let planId = tx.productID.components(separatedBy: ".").last
+        if tx.revocationDate != nil {
+            // Ingetrokken door Apple (terugbetaling e.d.)
+            guard var s = shop else { return }
+            s.abonnementActief = false
+            save(s)
+        } else {
+            activeerAbonnement(type: planId)
+        }
+    }
 
     func koopAbonnement(planId: String) async -> Bool {
         guard let productIDStr = storeProductIDs[planId] else { return false }
