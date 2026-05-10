@@ -1023,6 +1023,7 @@ struct KlantDashboardView: View {
     let onLogout: () -> Void
 
     @State private var showBewerken     = false
+    @State private var showOntdekken    = false
     @State private var showShopZoeker   = false
     @State private var showArtiesZoeker = false
     @State private var shopArtiesten:   [ArtiestProfiel] = []
@@ -1129,6 +1130,30 @@ struct KlantDashboardView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.11), lineWidth: 1))
                     .padding(.horizontal, 24)
                     .padding(.bottom, 14)
+
+                    // ── Ontdekken knop ───────────────────────
+                    Button(action: { showOntdekken = true }) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "sparkle.magnifyingglass")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(white: 0.55))
+                            Text("ONTDEK SHOPS & ARTIESTEN")
+                                .font(.system(size: 10, weight: .semibold))
+                                .tracking(2.5)
+                                .foregroundColor(Color(white: 0.55))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(white: 0.25))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(white: 0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.12), lineWidth: 1))
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 10)
 
                     // ── Kaart label ──────────────────────────
                     HStack {
@@ -1264,6 +1289,9 @@ struct KlantDashboardView: View {
         }
         .fullScreenCover(isPresented: $showBewerken) {
             KlantNAWView(onLogout: onLogout).environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showOntdekken) {
+            KlantOntdekkenView().environmentObject(store)
         }
         .fullScreenCover(isPresented: $showShopZoeker) {
             KlantShopZoekerView().environmentObject(store)
@@ -1487,6 +1515,252 @@ struct KlantDashboardView: View {
 
 import MapKit
 import CoreLocation
+
+// MARK: - Ontdekken (browse alle shops + artiesten)
+
+struct KlantOntdekkenView: View {
+    @EnvironmentObject var store: KlantStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var segment:   Int              = 0   // 0=Shops, 1=Artiesten
+    @State private var zoekterm:  String           = ""
+    @State private var shops:     [ShopProfiel]    = []
+    @State private var artiesten: [ArtiestProfiel] = []
+    @State private var laden:     Bool             = false
+
+    private var gefilterdShops: [ShopProfiel] {
+        zoekterm.isEmpty ? shops : shops.filter {
+            $0.bedrijfsnaam.localizedCaseInsensitiveContains(zoekterm) ||
+            $0.woonplaats.localizedCaseInsensitiveContains(zoekterm)
+        }
+    }
+
+    private var gefilterdArtiesten: [ArtiestProfiel] {
+        zoekterm.isEmpty ? artiesten : artiesten.filter {
+            $0.kunstnaam.localizedCaseInsensitiveContains(zoekterm) ||
+            $0.woonplaats.localizedCaseInsensitiveContains(zoekterm) ||
+            $0.stijlen.joined(separator: " ").localizedCaseInsensitiveContains(zoekterm) ||
+            $0.specialisatie.localizedCaseInsensitiveContains(zoekterm)
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // ── Header ──
+                HStack {
+                    Text("ONTDEKKEN")
+                        .font(.system(size: 20, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.white)
+                    Spacer()
+                    if laden { ProgressView().tint(Color(white: 0.4)).scaleEffect(0.8) }
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color(white: 0.4))
+                            .frame(width: 34, height: 34)
+                            .background(Color(white: 0.1))
+                            .clipShape(Circle())
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 56)
+                .padding(.bottom, 16)
+
+                // ── Segment ──
+                HStack(spacing: 0) {
+                    ForEach(["SHOPS", "ARTIESTEN"].indices, id: \.self) { i in
+                        Button(action: { withAnimation(.easeInOut(duration: 0.15)) { segment = i; zoekterm = "" } }) {
+                            Text(["SHOPS", "ARTIESTEN"][i])
+                                .font(.system(size: 10, weight: .bold))
+                                .tracking(3)
+                                .foregroundColor(segment == i ? .black : Color(white: 0.4))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(segment == i ? Color.white : Color.clear)
+                        }
+                    }
+                }
+                .background(Color(white: 0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+
+                // ── Zoekveld ──
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(Color(white: 0.4))
+                        .font(.system(size: 13))
+                    TextField("", text: $zoekterm)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white)
+                        .autocorrectionDisabled()
+                        .overlay(
+                            Group {
+                                if zoekterm.isEmpty {
+                                    Text(segment == 0 ? "ZOEK OP NAAM OF STAD" : "ZOEK OP NAAM, STIJL OF STAD")
+                                        .font(.system(size: 10))
+                                        .tracking(2)
+                                        .foregroundColor(Color(white: 0.3))
+                                        .allowsHitTesting(false)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        )
+                    if !zoekterm.isEmpty {
+                        Button(action: { zoekterm = "" }) {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(Color(white: 0.35))
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(Color(white: 0.08))
+                .overlay(Rectangle().stroke(Color(white: 0.13), lineWidth: 1))
+                .padding(.horizontal, 24)
+                .padding(.bottom, 4)
+
+                // ── Lijst ──
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        if segment == 0 {
+                            if gefilterdShops.isEmpty && !laden {
+                                leegMelding("Geen shops gevonden")
+                            } else {
+                                ForEach(gefilterdShops) { shop in shopRij(shop) }
+                            }
+                        } else {
+                            if gefilterdArtiesten.isEmpty && !laden {
+                                leegMelding("Geen artiesten gevonden")
+                            } else {
+                                ForEach(gefilterdArtiesten) { artiest in artiesRij(artiest) }
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+        .task { await laadAlles() }
+    }
+
+    @ViewBuilder
+    private func shopRij(_ shop: ShopProfiel) -> some View {
+        let isFav = store.favorietShop?.email == shop.email
+        Button(action: { store.slaFavorietShop(shop); dismiss() }) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isFav ? Color.white.opacity(0.12) : Color(white: 0.08))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "storefront")
+                        .font(.system(size: 16))
+                        .foregroundColor(isFav ? .white : Color(white: 0.3))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(shop.bedrijfsnaam)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                    if !shop.woonplaats.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin").font(.system(size: 9))
+                            Text(shop.woonplaats).font(.system(size: 11))
+                        }
+                        .foregroundColor(Color(white: 0.4))
+                    }
+                }
+                Spacer()
+                if isFav {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.white)
+                        .font(.system(size: 16))
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(isFav ? Color(white: 0.1) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        Rectangle().fill(Color(white: 0.09)).frame(height: 1).padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private func artiesRij(_ artiest: ArtiestProfiel) -> some View {
+        let isFav = store.favorietArties?.email == artiest.email
+        Button(action: { store.slaFavorietArties(artiest); dismiss() }) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isFav ? Color.white.opacity(0.12) : Color(white: 0.08))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "paintbrush.pointed")
+                        .font(.system(size: 15))
+                        .foregroundColor(isFav ? .white : Color(white: 0.3))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(artiest.kunstnaam.isEmpty ? artiest.email : artiest.kunstnaam)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                    if !artiest.specialisatie.isEmpty || !artiest.woonplaats.isEmpty {
+                        HStack(spacing: 6) {
+                            if !artiest.woonplaats.isEmpty {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "mappin").font(.system(size: 9))
+                                    Text(artiest.woonplaats).font(.system(size: 11))
+                                }
+                            }
+                            if !artiest.specialisatie.isEmpty && !artiest.woonplaats.isEmpty {
+                                Text("·").font(.system(size: 10)).foregroundColor(Color(white: 0.25))
+                            }
+                            if !artiest.specialisatie.isEmpty {
+                                Text(artiest.specialisatie).font(.system(size: 11))
+                            }
+                        }
+                        .foregroundColor(Color(white: 0.4))
+                    }
+                    if !artiest.stijlen.isEmpty {
+                        Text(artiest.stijlen.prefix(3).joined(separator: " · "))
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(white: 0.28))
+                    }
+                }
+                Spacer()
+                if isFav {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.white)
+                        .font(.system(size: 16))
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(isFav ? Color(white: 0.1) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        Rectangle().fill(Color(white: 0.09)).frame(height: 1).padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private func leegMelding(_ tekst: String) -> some View {
+        Text(tekst)
+            .font(.system(size: 12)).tracking(2)
+            .foregroundColor(Color(white: 0.3))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 60)
+    }
+
+    private func laadAlles() async {
+        laden = true
+        async let s = CloudKitManager.shared.fetchPubliekeShops()
+        async let a = CloudKitManager.shared.fetchPubliekeArtiesten()
+        shops     = await s
+        artiesten = await a
+        laden = false
+    }
+}
 
 struct KlantShopZoekerView: View {
     @EnvironmentObject var store: KlantStore

@@ -170,6 +170,7 @@ struct InkButton: View {
             )
         }
         .buttonStyle(InkButtonStyle())
+        .accessibilityIdentifier("btn_\(label.lowercased())")
     }
 }
 

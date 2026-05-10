@@ -96,6 +96,7 @@ class KlantStore: ObservableObject {
     private let consentKey        = "klant_consent"
     private let favArtiesKey      = "klant_fav_arties"
     private let favShopKey        = "klant_fav_shop"
+    private var syncTask:          Task<Void, Never>?
 
     init() {
         isLoggedIn     = UserDefaults.standard.bool(forKey: loginKey)
@@ -109,6 +110,7 @@ class KlantStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: favShopKey) {
             favorietShop = try? JSONDecoder().decode(ShopProfiel.self, from: data)
         }
+        if isLoggedIn { startSync() }
     }
 
     // Lokaal opslaan + CloudKit sync op achtergrond
@@ -178,6 +180,7 @@ class KlantStore: ObservableObject {
                 }
             }
         }
+        startSync()
     }
 
     func inloggen(email: String, wachtwoord: String) async -> String? {
@@ -214,10 +217,12 @@ class KlantStore: ObservableObject {
                 }
             }
         }
+        startSync()
         return nil
     }
 
     func logout() {
+        stopSync()
         klant          = nil
         isLoggedIn     = false
         consentGegeven = false
@@ -228,5 +233,41 @@ class KlantStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: favArtiesKey)
         UserDefaults.standard.removeObject(forKey: favShopKey)
+    }
+
+    // MARK: - Achtergrond sync elke 10 minuten
+
+    private func startSync() {
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 min
+                guard !Task.isCancelled else { break }
+                await self?.syncVanCloud()
+            }
+        }
+    }
+
+    private func stopSync() {
+        syncTask?.cancel()
+        syncTask = nil
+    }
+
+    private func syncVanCloud() async {
+        guard isLoggedIn else { return }
+        if let email = favorietShop?.email,
+           let profiel = await CloudKitManager.shared.fetchPubliekShop(email: email) {
+            favorietShop = profiel
+            if let data = try? JSONEncoder().encode(profiel) {
+                UserDefaults.standard.set(data, forKey: favShopKey)
+            }
+        }
+        if let email = favorietArties?.email,
+           let profiel = await CloudKitManager.shared.fetchPubliekArties(email: email) {
+            favorietArties = profiel
+            if let data = try? JSONEncoder().encode(profiel) {
+                UserDefaults.standard.set(data, forKey: favArtiesKey)
+            }
+        }
     }
 }

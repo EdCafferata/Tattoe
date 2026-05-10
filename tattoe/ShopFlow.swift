@@ -116,6 +116,7 @@ struct AbonnementPlanKaart: View {
                 .frame(height: 42)
                 .background(plan.isEnterprise ? Color(white: 0.1) : Color.white)
             }
+            .accessibilityIdentifier("plan_knop_\(plan.id)")
             .disabled(bezig)
         }
         .background(Color(white: 0.065))
@@ -1347,6 +1348,7 @@ struct ShopModeKeuzeView: View {
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 0.14), lineWidth: 1))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .accessibilityIdentifier("btn_als_klant")
                     .buttonStyle(.plain)
 
                     Button(action: { showBeheren = true }) {
@@ -1375,6 +1377,7 @@ struct ShopModeKeuzeView: View {
                         .background(Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .accessibilityIdentifier("btn_beheren")
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 24)

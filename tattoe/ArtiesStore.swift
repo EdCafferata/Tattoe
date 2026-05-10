@@ -98,8 +98,9 @@ class ArtiesStore: ObservableObject {
     @Published var portfolioFotos:  [Data?] = Array(repeating: nil, count: 9)
     @Published var voorbeeldFotos:  [Data?] = Array(repeating: nil, count: 9)
 
-    private let loginKey = "arties_logged_in"
-    private let dataKey  = "arties_data"
+    private let loginKey  = "arties_logged_in"
+    private let dataKey   = "arties_data"
+    private var syncTask:  Task<Void, Never>?
 
     init() {
         isLoggedIn = UserDefaults.standard.bool(forKey: loginKey)
@@ -109,6 +110,7 @@ class ArtiesStore: ObservableObject {
         profielFotoData = try? Data(contentsOf: profielFotoURL())
         portfolioFotos  = (0..<9).map { try? Data(contentsOf: portfolioFotoURL($0)) }
         voorbeeldFotos  = (0..<9).map { try? Data(contentsOf: voorbeeldFotoURL($0)) }
+        if isLoggedIn { startSync() }
     }
 
     func save(_ arties: Arties) {
@@ -174,6 +176,7 @@ class ArtiesStore: ObservableObject {
         persistArties(found)
         let fotos = await CloudKitManager.shared.fetchArtiestFotos(arties: found)
         applyFotos(fotos)
+        startSync()
     }
 
     func inloggen(email: String, wachtwoord: String) async -> String? {
@@ -188,10 +191,12 @@ class ArtiesStore: ObservableObject {
         persistArties(found)
         let fotos = await CloudKitManager.shared.fetchArtiestFotos(arties: found)
         applyFotos(fotos)
+        startSync()
         return nil
     }
 
     func logout() {
+        stopSync()
         arties          = nil
         isLoggedIn      = false
         profielFotoData = nil
@@ -204,6 +209,32 @@ class ArtiesStore: ObservableObject {
             try? FileManager.default.removeItem(at: portfolioFotoURL(i))
             try? FileManager.default.removeItem(at: voorbeeldFotoURL(i))
         }
+    }
+
+    // MARK: - Achtergrond sync elke 10 minuten
+
+    private func startSync() {
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 min
+                guard !Task.isCancelled else { break }
+                await self?.syncVanCloud()
+            }
+        }
+    }
+
+    private func stopSync() {
+        syncTask?.cancel()
+        syncTask = nil
+    }
+
+    private func syncVanCloud() async {
+        guard let a = arties, isLoggedIn else { return }
+        guard let found = await CloudKitManager.shared.fetchArties(email: a.email) else { return }
+        persistArties(found)
+        let fotos = await CloudKitManager.shared.fetchArtiestFotos(arties: found)
+        applyFotos(fotos)
     }
 
     // MARK: Private

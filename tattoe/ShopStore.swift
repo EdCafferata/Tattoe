@@ -91,14 +91,24 @@ class ShopStore: ObservableObject {
         return max(0, Calendar.current.dateComponents([.day], from: Date(), to: verloopdatum).day ?? 0)
     }
 
-    private let loginKey = "shop_logged_in"
-    private let dataKey  = "shop_data"
+    private let loginKey  = "shop_logged_in"
+    private let dataKey   = "shop_data"
+    private var syncTask:  Task<Void, Never>?
 
     init() {
+        // UITest injection via launch environment
+        if let json = ProcessInfo.processInfo.environment["SHOP_TEST_DATA"],
+           let data = json.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(Shop.self, from: data) {
+            shop = decoded
+            isLoggedIn = true
+            return
+        }
         isLoggedIn = UserDefaults.standard.bool(forKey: loginKey)
         if let data = UserDefaults.standard.data(forKey: dataKey) {
             shop = try? JSONDecoder().decode(Shop.self, from: data)
         }
+        if isLoggedIn { startSync() }
     }
 
     func save(_ shop: Shop) {
@@ -139,6 +149,7 @@ class ShopStore: ObservableObject {
         if let data = try? JSONEncoder().encode(found) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
+        startSync()
     }
 
     func inloggen(email: String, wachtwoord: String) async -> String? {
@@ -156,13 +167,42 @@ class ShopStore: ObservableObject {
         if let data = try? JSONEncoder().encode(found) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
+        startSync()
         return nil
     }
 
     func logout() {
+        stopSync()
         shop       = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
+    }
+
+    // MARK: - Achtergrond sync elke 5 minuten
+
+    private func startSync() {
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
+                guard !Task.isCancelled else { break }
+                await self?.syncVanCloud()
+            }
+        }
+    }
+
+    private func stopSync() {
+        syncTask?.cancel()
+        syncTask = nil
+    }
+
+    private func syncVanCloud() async {
+        guard let s = shop, isLoggedIn else { return }
+        guard let found = await CloudKitManager.shared.fetchShop(email: s.email) else { return }
+        shop = found
+        if let data = try? JSONEncoder().encode(found) {
+            UserDefaults.standard.set(data, forKey: dataKey)
+        }
     }
 }
