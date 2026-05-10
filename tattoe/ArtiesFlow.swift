@@ -1630,6 +1630,9 @@ struct ArtiesAfsprakenView: View {
     @State private var afspraken: [Afspraak] = []
     @State private var laden = true
     @State private var bezig: Set<String> = []
+    @State private var toonAgendaVoor: Afspraak? = nil
+    @State private var agendaTekst: String? = nil
+    @State private var toonAfzeggen: Afspraak? = nil
 
     private let datumFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -1698,64 +1701,110 @@ struct ArtiesAfsprakenView: View {
             .padding(.top, 16)
         }
         .task { await herlaad() }
+        .confirmationDialog("Agenda", isPresented: .init(
+            get: { toonAgendaVoor != nil },
+            set: { if !$0 { toonAgendaVoor = nil } }
+        ), titleVisibility: .visible) {
+            Button("Toevoegen aan agenda") {
+                guard let a = toonAgendaVoor else { return }
+                Task {
+                    let naam = a.klantNaam.isEmpty ? a.klantEmail : a.klantNaam
+                    let ok = await EventKitManager.shared.voegToe(
+                        afspraakId: a.id, datum: a.datum,
+                        titel: "Tattoo – \(naam)", notitie: a.notitie)
+                    agendaTekst = ok ? "Toegevoegd met herinneringen." : "Toegang geweigerd."
+                }
+            }
+            if let a = toonAgendaVoor, EventKitManager.shared.heeftAgendaItem(afspraakId: a.id) {
+                Button("Verwijder uit agenda", role: .destructive) {
+                    if let a = toonAgendaVoor { EventKitManager.shared.verwijder(afspraakId: a.id) }
+                }
+            }
+            Button("Annuleer", role: .cancel) { toonAgendaVoor = nil }
+        }
+        .confirmationDialog("Afspraak afzeggen?", isPresented: .init(
+            get: { toonAfzeggen != nil },
+            set: { if !$0 { toonAfzeggen = nil } }
+        ), titleVisibility: .visible) {
+            Button("Ja, zeg af", role: .destructive) {
+                guard let a = toonAfzeggen else { return }
+                bezig.insert(a.id)
+                Task { await store.annuleerAfspraak(a); bezig.remove(a.id); await herlaad() }
+            }
+            Button("Toch niet", role: .cancel) { toonAfzeggen = nil }
+        }
+        .alert(agendaTekst ?? "", isPresented: .init(
+            get: { agendaTekst != nil },
+            set: { if !$0 { agendaTekst = nil } }
+        )) { Button("OK") { agendaTekst = nil } }
     }
 
     private func herlaad() async {
         laden = true
         if let email = store.arties?.email {
             let direct = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
-            // ook via arties_akkoord/shop_akkoord berichten om te weten dat shop akkoord gaf
-            afspraken = direct.filter { $0.status != "bevestigd" && $0.status != "geweigerd" }
+            afspraken = direct.filter { !["geweigerd", "geannuleerd"].contains($0.status) }
+                              .sorted { $0.datum < $1.datum }
         }
         laden = false
     }
 
     @ViewBuilder
     private func afspraakRij(_ a: Afspraak) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(a.klantNaam.isEmpty ? a.klantEmail : a.klantNaam)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(datumFormatter.string(from: a.datum))
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(white: 0.5))
-                    .tracking(0.5)
-                if !a.notitie.isEmpty {
-                    Text(a.notitie)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(white: 0.6))
-                        .lineLimit(2)
-                        .padding(.top, 2)
-                }
-                statusLabel(a.status)
-            }
-            Spacer()
-            if bezig.contains(a.id) {
-                ProgressView().tint(.white).frame(width: 52)
-            } else if a.status == "aangevraagd" || a.status == "shop_akkoord" {
-                VStack(spacing: 8) {
-                    Button(action: { keur(a, goed: true) }) {
-                        Text("OK")
-                            .font(.system(size: 11, weight: .bold)).tracking(1)
-                            .foregroundColor(.black)
-                            .frame(width: 52, height: 32)
-                            .background(Color.white).cornerRadius(5)
+        let isBevestigd = a.status == "bevestigd"
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(a.klantNaam.isEmpty ? a.klantEmail : a.klantNaam)
+                        .font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+                    Text(datumFormatter.string(from: a.datum))
+                        .font(.system(size: 11)).foregroundColor(Color(white: 0.5)).tracking(0.5)
+                    if !a.notitie.isEmpty {
+                        Text(a.notitie).font(.system(size: 12)).foregroundColor(Color(white: 0.6))
+                            .lineLimit(2).padding(.top, 2)
                     }
-                    Button(action: { keur(a, goed: false) }) {
-                        Text("NEE")
-                            .font(.system(size: 11, weight: .bold)).tracking(1)
-                            .foregroundColor(Color(white: 0.5))
-                            .frame(width: 52, height: 32)
-                            .background(Color(white: 0.1)).cornerRadius(5)
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+                    statusLabel(a.status)
+                }
+                Spacer()
+                if bezig.contains(a.id) {
+                    ProgressView().tint(.white).frame(width: 52)
+                } else if !isBevestigd && (a.status == "aangevraagd" || a.status == "shop_akkoord") {
+                    VStack(spacing: 8) {
+                        Button(action: { keur(a, goed: true) }) {
+                            Text("OK")
+                                .font(.system(size: 11, weight: .bold)).tracking(1).foregroundColor(.black)
+                                .frame(width: 52, height: 32).background(Color.white).cornerRadius(5)
+                        }
+                        Button(action: { keur(a, goed: false) }) {
+                            Text("NEE")
+                                .font(.system(size: 11, weight: .bold)).tracking(1).foregroundColor(Color(white: 0.5))
+                                .frame(width: 52, height: 32).background(Color(white: 0.1)).cornerRadius(5)
+                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.2), lineWidth: 1))
+                        }
+                    }
+                }
+            }
+            if isBevestigd {
+                HStack(spacing: 8) {
+                    Button(action: { toonAgendaVoor = a }) {
+                        Label(EventKitManager.shared.heeftAgendaItem(afspraakId: a.id) ? "In agenda" : "Agenda",
+                              systemImage: "calendar.badge.plus")
+                            .font(.system(size: 11, weight: .semibold)).tracking(1).foregroundColor(.black)
+                            .frame(maxWidth: .infinity).frame(height: 32).background(Color.white).cornerRadius(5)
+                    }
+                    Button(action: { toonAfzeggen = a }) {
+                        Text("Afzeggen")
+                            .font(.system(size: 11, weight: .semibold)).tracking(1)
+                            .foregroundColor(Color(red: 0.9, green: 0.3, blue: 0.3))
+                            .frame(maxWidth: .infinity).frame(height: 32).background(Color(white: 0.1)).cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(red: 0.5, green: 0.15, blue: 0.15), lineWidth: 1))
                     }
                 }
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(Color(white: 0.07))
-        .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
+        .background(Color(white: isBevestigd ? 0.09 : 0.07))
+        .overlay(Rectangle().stroke(Color(white: isBevestigd ? 0.18 : 0.1), lineWidth: 1))
     }
 
     @ViewBuilder
@@ -1764,6 +1813,7 @@ struct ArtiesAfsprakenView: View {
             case "arties_akkoord": ("Wacht op shop", Color.yellow)
             case "shop_akkoord":   ("Shop akkoord – jouw beurt", Color.orange)
             case "wacht_klant":    ("Wacht op klant", Color.blue)
+            case "bevestigd":      ("Bevestigd door klant", Color(white: 0.6))
             default:               ("", .clear)
         }
         if !tekst.isEmpty {

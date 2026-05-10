@@ -141,8 +141,8 @@ class KlantStore: ObservableObject {
         updateBadge()
     }
 
-    func bevestigAfspraak(_ afspraakId: String) async {
-        guard let a = await CloudKitManager.shared.fetchAfspraak(id: afspraakId) else { return }
+    func bevestigAfspraak(_ afspraakId: String) async -> Afspraak? {
+        guard let a = await CloudKitManager.shared.fetchAfspraak(id: afspraakId) else { return nil }
         await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "bevestigd")
         let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
         let datumStr = df.string(from: a.datum)
@@ -157,6 +157,27 @@ class KlantStore: ObservableObject {
                             type: "bevestigd", tekst: tekst, afspraakId: a.id, datum: Date())
             await CloudKitManager.shared.saveBericht(b)
         }
+        await laadBerichten()
+        return a
+    }
+
+    func annuleerAfspraak(afspraakId: String) async {
+        guard let a = await CloudKitManager.shared.fetchAfspraak(id: afspraakId) else { return }
+        await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "geannuleerd")
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let naam = klant.map { "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) } ?? ""
+        let tekst = "\(naam.isEmpty ? klant?.email ?? "" : naam) heeft de afspraak op \(df.string(from: a.datum)) afgezegd."
+        if !a.artiesEmail.isEmpty {
+            let b = Bericht(ontvangerEmail: a.artiesEmail, ontvangerRol: "arties",
+                            type: "geannuleerd", tekst: tekst, afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        }
+        if !a.shopEmail.isEmpty {
+            let b = Bericht(ontvangerEmail: a.shopEmail, ontvangerRol: "shop",
+                            type: "geannuleerd", tekst: tekst, afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(b)
+        }
+        EventKitManager.shared.verwijder(afspraakId: afspraakId)
         await laadBerichten()
     }
 

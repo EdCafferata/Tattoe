@@ -1096,11 +1096,12 @@ struct KlantDashboardView: View {
     @EnvironmentObject var store: KlantStore
     let onLogout: () -> Void
 
-    @State private var showBewerken     = false
-    @State private var showOntdekken    = false
-    @State private var showShopZoeker   = false
-    @State private var showArtiesZoeker = false
-    @State private var showBerichten    = false
+    @State private var showBewerken        = false
+    @State private var showOntdekken       = false
+    @State private var showShopZoeker      = false
+    @State private var showArtiesZoeker    = false
+    @State private var showBerichten       = false
+    @State private var showAfsprakenoverzicht = false
     @State private var shopArtiesten:   [ArtiestProfiel] = []
     @State private var ladenArtiesten   = false
 
@@ -1231,26 +1232,40 @@ struct KlantDashboardView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 14)
 
-                    // ── Ontdekken knop ───────────────────────
-                    Button(action: { showOntdekken = true }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "sparkle.magnifyingglass")
-                                .font(.system(size: 13))
-                                .foregroundColor(Color(white: 0.55))
-                            Text("ONTDEK SHOPS & ARTIESTEN")
-                                .font(.system(size: 10, weight: .semibold))
-                                .tracking(2.5)
-                                .foregroundColor(Color(white: 0.55))
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color(white: 0.25))
+                    // ── Actie-knoppen rij ───────────────────
+                    HStack(spacing: 8) {
+                        Button(action: { showOntdekken = true }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkle.magnifyingglass")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(white: 0.55))
+                                Text("ONTDEK")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .tracking(2)
+                                    .foregroundColor(Color(white: 0.55))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(white: 0.07))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.12), lineWidth: 1))
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(Color(white: 0.07))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.12), lineWidth: 1))
+                        Button(action: { showAfsprakenoverzicht = true }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(white: 0.55))
+                                Text("AFSPRAKEN")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .tracking(2)
+                                    .foregroundColor(Color(white: 0.55))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(white: 0.07))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.12), lineWidth: 1))
+                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 10)
@@ -1402,6 +1417,9 @@ struct KlantDashboardView: View {
         }
         .fullScreenCover(isPresented: $showBerichten) {
             KlantBerichtenView().environmentObject(store)
+        }
+        .fullScreenCover(isPresented: $showAfsprakenoverzicht) {
+            KlantAfsprakenoverzichtView().environmentObject(store)
         }
         .fullScreenCover(isPresented: $showOntdekken) {
             KlantOntdekkenView().environmentObject(store)
@@ -2718,6 +2736,9 @@ struct KlantBerichtenView: View {
     @EnvironmentObject var store: KlantStore
     @Environment(\.dismiss) private var dismiss
     @State private var bezig: Set<String> = []
+    @State private var toonAgendaVraag = false
+    @State private var agendaAfspraak: Afspraak? = nil
+    @State private var agendaGeslaagd: String? = nil
 
     private let df: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
@@ -2760,11 +2781,27 @@ struct KlantBerichtenView: View {
             }
             .padding(.leading, 24).padding(.top, 16)
         }
+        .confirmationDialog("Toevoegen aan agenda?", isPresented: $toonAgendaVraag, titleVisibility: .visible) {
+            Button("Ja, voeg toe") {
+                guard let a = agendaAfspraak else { return }
+                Task {
+                    let titel = [a.artiesEmail, a.shopEmail].filter { !$0.isEmpty }.joined(separator: " · ")
+                    let ok = await EventKitManager.shared.voegToe(
+                        afspraakId: a.id, datum: a.datum,
+                        titel: "Tattoo – \(titel)", notitie: a.notitie)
+                    agendaGeslaagd = ok ? "Afspraak toegevoegd met 2-daagse en 1-daagse herinnering." : "Kon niet toevoegen aan agenda."
+                }
+            }
+            Button("Nee, toch niet", role: .cancel) {}
+        }
+        .alert(agendaGeslaagd ?? "", isPresented: .init(
+            get: { agendaGeslaagd != nil },
+            set: { if !$0 { agendaGeslaagd = nil } }
+        )) { Button("OK") { agendaGeslaagd = nil } }
     }
 
     @ViewBuilder
     private func berichtRij(_ b: Bericht) -> some View {
-        let ongelezen = !store.berichten.filter { $0.id == b.id }.isEmpty
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: iconNaam(b.type))
@@ -2813,15 +2850,19 @@ struct KlantBerichtenView: View {
     private func bevestig(_ b: Bericht) {
         bezig.insert(b.id)
         Task {
-            await store.bevestigAfspraak(b.afspraakId)
+            if let a = await store.bevestigAfspraak(b.afspraakId) {
+                agendaAfspraak = a
+                toonAgendaVraag = true
+            }
             bezig.remove(b.id)
         }
     }
 
     private func annuleer(_ b: Bericht) {
+        bezig.insert(b.id)
         Task {
-            await CloudKitManager.shared.updateAfspraakStatus(id: b.afspraakId, nieuwStatus: "geweigerd")
-            store.berichten.removeAll { $0.id == b.id }
+            await store.annuleerAfspraak(afspraakId: b.afspraakId)
+            bezig.remove(b.id)
         }
     }
 
@@ -2831,25 +2872,224 @@ struct KlantBerichtenView: View {
         case "wacht_klant": "BEVESTIGING NODIG"
         case "bevestigd":   "BEVESTIGD"
         case "geweigerd":   "NIET BESCHIKBAAR"
+        case "geannuleerd": "AFGEZEGD"
         default:            type.uppercased()
         }
     }
 
     private func kleurVoor(_ type: String) -> Color {
         switch type {
-        case "wacht_klant": .orange
-        case "bevestigd":   Color(white: 0.7)
-        case "geweigerd":   Color(red: 0.9, green: 0.3, blue: 0.3)
-        default:            Color(white: 0.5)
+        case "wacht_klant":             .orange
+        case "bevestigd":               Color(white: 0.7)
+        case "geweigerd","geannuleerd": Color(red: 0.9, green: 0.3, blue: 0.3)
+        default:                        Color(white: 0.5)
         }
     }
 
     private func iconNaam(_ type: String) -> String {
         switch type {
-        case "wacht_klant": "bell.badge"
-        case "bevestigd":   "checkmark.circle"
-        case "geweigerd":   "xmark.circle"
-        default:            "calendar"
+        case "wacht_klant":             "bell.badge"
+        case "bevestigd":               "checkmark.circle"
+        case "geweigerd","geannuleerd": "xmark.circle"
+        default:                        "calendar"
         }
+    }
+}
+
+// MARK: - Klant Afsprakenoverzicht
+
+struct KlantAfsprakenoverzichtView: View {
+    @EnvironmentObject var store: KlantStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var afspraken: [Afspraak] = []
+    @State private var laden = true
+    @State private var bezigIds: Set<String> = []
+    @State private var toonAgendaVoor: Afspraak? = nil
+    @State private var agendaTekst: String? = nil
+    @State private var toonAfzeggen: Afspraak? = nil
+
+    private let df: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
+        f.dateFormat = "EEE d MMM yyyy · HH:mm"; return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer().frame(height: 56)
+                Text("MIJN AFSPRAKEN")
+                    .font(.system(size: 20, weight: .black)).tracking(5).foregroundColor(.white)
+                Spacer().frame(height: 6)
+                Text("Aanvragen en bevestigde afspraken")
+                    .font(.system(size: 11)).tracking(1.5).foregroundColor(Color(white: 0.4))
+                Spacer().frame(height: 24)
+
+                if laden {
+                    Spacer(); ProgressView().tint(.white); Spacer()
+                } else if afspraken.isEmpty {
+                    Spacer()
+                    Image(systemName: "calendar.badge.clock").font(.system(size: 40)).foregroundColor(Color(white: 0.2))
+                    Spacer().frame(height: 16)
+                    Text("Nog geen afspraken").font(.system(size: 13)).tracking(1).foregroundColor(Color(white: 0.3))
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 1) {
+                            ForEach(afspraken) { a in afspraakRij(a) }
+                        }
+                        .padding(.horizontal, 24).padding(.bottom, 40)
+                    }
+                }
+            }
+            Button(action: { dismiss() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                    Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                }
+                .foregroundColor(Color(white: 0.35))
+            }
+            .padding(.leading, 24).padding(.top, 16)
+        }
+        .task { await herlaad() }
+        .confirmationDialog("Agenda", isPresented: .init(
+            get: { toonAgendaVoor != nil },
+            set: { if !$0 { toonAgendaVoor = nil } }
+        ), titleVisibility: .visible) {
+            Button("Toevoegen aan agenda") {
+                guard let a = toonAgendaVoor else { return }
+                Task {
+                    let met = [a.artiesEmail, a.shopEmail].filter { !$0.isEmpty }.joined(separator: " · ")
+                    let ok = await EventKitManager.shared.voegToe(
+                        afspraakId: a.id, datum: a.datum,
+                        titel: "Tattoo – \(met)", notitie: a.notitie)
+                    agendaTekst = ok ? "Toegevoegd met 2-daagse en 1-daagse herinnering." : "Toegang geweigerd."
+                }
+            }
+            if let a = toonAgendaVoor, EventKitManager.shared.heeftAgendaItem(afspraakId: a.id) {
+                Button("Verwijder uit agenda", role: .destructive) {
+                    if let a = toonAgendaVoor { EventKitManager.shared.verwijder(afspraakId: a.id) }
+                }
+            }
+            Button("Annuleer", role: .cancel) { toonAgendaVoor = nil }
+        }
+        .confirmationDialog("Afspraak afzeggen?", isPresented: .init(
+            get: { toonAfzeggen != nil },
+            set: { if !$0 { toonAfzeggen = nil } }
+        ), titleVisibility: .visible) {
+            Button("Ja, zeg af", role: .destructive) {
+                guard let a = toonAfzeggen else { return }
+                bezigIds.insert(a.id)
+                Task {
+                    await store.annuleerAfspraak(afspraakId: a.id)
+                    bezigIds.remove(a.id)
+                    await herlaad()
+                }
+            }
+            Button("Toch niet", role: .cancel) { toonAfzeggen = nil }
+        }
+        .alert(agendaTekst ?? "", isPresented: .init(
+            get: { agendaTekst != nil },
+            set: { if !$0 { agendaTekst = nil } }
+        )) { Button("OK") { agendaTekst = nil } }
+    }
+
+    @ViewBuilder
+    private func afspraakRij(_ a: Afspraak) -> some View {
+        let isBevestigd = a.status == "bevestigd"
+        let isActief = !["geweigerd", "geannuleerd"].contains(a.status)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(df.string(from: a.datum))
+                        .font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
+                    metLabel(a)
+                }
+                Spacer()
+                statusBadge(a.status)
+            }
+            if !a.notitie.isEmpty {
+                Text(a.notitie).font(.system(size: 12)).foregroundColor(Color(white: 0.5)).lineLimit(2)
+            }
+            if bezigIds.contains(a.id) {
+                ProgressView().tint(.white)
+            } else if isBevestigd {
+                HStack(spacing: 8) {
+                    Button(action: { toonAgendaVoor = a }) {
+                        Label(EventKitManager.shared.heeftAgendaItem(afspraakId: a.id) ? "In agenda" : "Agenda",
+                              systemImage: "calendar.badge.plus")
+                            .font(.system(size: 11, weight: .semibold)).tracking(1)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity).frame(height: 32)
+                            .background(Color.white).cornerRadius(5)
+                    }
+                    Button(action: { toonAfzeggen = a }) {
+                        Text("Afzeggen")
+                            .font(.system(size: 11, weight: .semibold)).tracking(1)
+                            .foregroundColor(Color(red: 0.9, green: 0.3, blue: 0.3))
+                            .frame(maxWidth: .infinity).frame(height: 32)
+                            .background(Color(white: 0.1)).cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(red: 0.5, green: 0.15, blue: 0.15), lineWidth: 1))
+                    }
+                }
+            } else if isActief {
+                Button(action: { toonAfzeggen = a }) {
+                    Text("Intrekken")
+                        .font(.system(size: 11, weight: .semibold)).tracking(1)
+                        .foregroundColor(Color(white: 0.45))
+                        .frame(maxWidth: .infinity).frame(height: 32)
+                        .background(Color(white: 0.08)).cornerRadius(5)
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(white: isBevestigd ? 0.09 : 0.06))
+        .overlay(Rectangle().stroke(Color(white: isBevestigd ? 0.18 : 0.1), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func metLabel(_ a: Afspraak) -> some View {
+        let artiesNaam: String? = !a.artiesEmail.isEmpty
+            ? (store.favorietArties?.email == a.artiesEmail
+               ? (store.favorietArties?.kunstnaam.isEmpty == false ? store.favorietArties?.kunstnaam : store.favorietArties?.email)
+               : a.artiesEmail)
+            : nil
+        let shopNaam: String? = !a.shopEmail.isEmpty
+            ? (store.favorietShop?.email == a.shopEmail ? store.favorietShop?.bedrijfsnaam : a.shopEmail)
+            : nil
+        let label = [artiesNaam, shopNaam].compactMap { $0 }.joined(separator: " · ")
+        if !label.isEmpty {
+            Text(label).font(.system(size: 11)).foregroundColor(Color(white: 0.45)).lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private func statusBadge(_ status: String) -> some View {
+        let (tekst, kleur): (String, Color) = switch status {
+            case "aangevraagd":   ("AANGEVRAAGD", Color(white: 0.5))
+            case "arties_akkoord","shop_akkoord": ("IN BEHANDELING", .orange)
+            case "wacht_klant":   ("JOUW BEURT", .orange)
+            case "bevestigd":     ("BEVESTIGD", Color(white: 0.7))
+            case "geweigerd":     ("GEWEIGERD", Color(red: 0.9, green: 0.3, blue: 0.3))
+            case "geannuleerd":   ("AFGEZEGD", Color(red: 0.9, green: 0.3, blue: 0.3))
+            default:              (status.uppercased(), Color(white: 0.4))
+        }
+        Text(tekst)
+            .font(.system(size: 9, weight: .bold)).tracking(1.5)
+            .foregroundColor(kleur)
+            .padding(.horizontal, 7).padding(.vertical, 4)
+            .background(kleur.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func herlaad() async {
+        laden = true
+        if let email = store.klant?.email {
+            let all = await CloudKitManager.shared.fetchAfspraken(klantEmail: email)
+            afspraken = all.sorted { $0.datum > $1.datum }
+        }
+        laden = false
     }
 }

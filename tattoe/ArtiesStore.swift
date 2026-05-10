@@ -157,9 +157,26 @@ class ArtiesStore: ObservableObject {
         let naam = arties.map { $0.kunstnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.kunstnaam } ?? ""
         let b = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
                         type: "geweigerd",
-                        tekst: "Helaas, \(naam) heeft je afspraakverzoek op \(DateFormatter().string(from: a.datum)) niet kunnen bevestigen.",
+                        tekst: "Helaas, \(naam) heeft je afspraakverzoek op \(df.string(from: a.datum)) niet kunnen bevestigen.",
                         afspraakId: a.id, datum: Date())
         await CloudKitManager.shared.saveBericht(b)
+        await laadBerichten()
+    }
+
+    func annuleerAfspraak(_ a: Afspraak) async {
+        await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "geannuleerd")
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let naam = arties.map { $0.kunstnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.kunstnaam } ?? ""
+        let tekst = "\(naam) heeft de afspraak op \(df.string(from: a.datum)) afgezegd."
+        let bKlant = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
+                             type: "geannuleerd", tekst: tekst, afspraakId: a.id, datum: Date())
+        await CloudKitManager.shared.saveBericht(bKlant)
+        if !a.shopEmail.isEmpty {
+            let bShop = Bericht(ontvangerEmail: a.shopEmail, ontvangerRol: "shop",
+                                type: "geannuleerd", tekst: tekst, afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(bShop)
+        }
+        EventKitManager.shared.verwijder(afspraakId: a.id)
         await laadBerichten()
     }
 

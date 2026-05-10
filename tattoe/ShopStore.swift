@@ -161,6 +161,23 @@ class ShopStore: ObservableObject {
         await laadBerichten()
     }
 
+    func annuleerAfspraak(_ a: Afspraak) async {
+        await CloudKitManager.shared.updateAfspraakStatus(id: a.id, nieuwStatus: "geannuleerd")
+        let df = DateFormatter(); df.locale = Locale(identifier: "nl_NL"); df.dateFormat = "d MMM · HH:mm"
+        let naam = shop.map { $0.bedrijfsnaam.isEmpty ? "\($0.voornaam) \($0.achternaam)".trimmingCharacters(in: .whitespaces) : $0.bedrijfsnaam } ?? ""
+        let tekst = "\(naam) heeft de afspraak op \(df.string(from: a.datum)) afgezegd."
+        let bKlant = Bericht(ontvangerEmail: a.klantEmail, ontvangerRol: "klant",
+                             type: "geannuleerd", tekst: tekst, afspraakId: a.id, datum: Date())
+        await CloudKitManager.shared.saveBericht(bKlant)
+        if !a.artiesEmail.isEmpty {
+            let bArties = Bericht(ontvangerEmail: a.artiesEmail, ontvangerRol: "arties",
+                                  type: "geannuleerd", tekst: tekst, afspraakId: a.id, datum: Date())
+            await CloudKitManager.shared.saveBericht(bArties)
+        }
+        EventKitManager.shared.verwijder(afspraakId: a.id)
+        await laadBerichten()
+    }
+
     func save(_ shop: Shop) {
         self.shop       = shop
         self.isLoggedIn = true
