@@ -103,9 +103,9 @@ class ShopStore: ObservableObject {
     private var gelezenIds: Set<String> = []
 
     private let storeProductIDs: [String: String] = [
-        "starter": "info.cafferata.tattoe.starter",
-        "studio":  "info.cafferata.tattoe.studio",
-        "pro":     "info.cafferata.tattoe.pro"
+        "starter": "info.cafferata.tattoe.sub.starter",
+        "studio":  "info.cafferata.tattoe.sub.studio",
+        "pro":     "info.cafferata.tattoe.sub.pro"
     ]
     private var transactionListener: Task<Void, Never>?
 
