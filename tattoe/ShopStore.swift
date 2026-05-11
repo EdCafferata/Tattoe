@@ -133,6 +133,11 @@ class ShopStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([VoorraadItem].self, from: data) {
             voorraad = decoded
         }
+        #if DEBUG
+        if voorraad.isEmpty {
+            voorraad = TestData.voorraadShop
+        }
+        #endif
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
         Task { await self.controleerAbonnementen() }
@@ -379,6 +384,16 @@ class ShopStore: ObservableObject {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
         await laadBerichten()
+        await laadVoorraad()
+    }
+
+    func laadVoorraad() async {
+        // Haal voorraad op uit lokale opslag; inject testdata in DEBUG als lijst leeg is
+        #if DEBUG
+        if voorraad.isEmpty {
+            voorraad = TestData.voorraadShop
+        }
+        #endif
     }
 
     func laadBerichten() async {

@@ -168,6 +168,62 @@ enum TestData {
         ]
     }
 
+    // MARK: - Voorraad shop (Dragon Tattoo)
+
+    static var voorraadShop: [VoorraadItem] {
+        let nu = Date()
+        func vd(_ maanden: Int) -> Date { Calendar.current.date(byAdding: .month, value: maanden, to: nu) ?? nu }
+        return [
+            // Inkt — diverse batches
+            VoorraadItem(id: "v-ink1", naam: "Intenze True Black",         type: .inkt,
+                         merk: "Intenze", batchNummer: "ITZ-2024-TB-0091", kleur: "Carbon Black",
+                         hoeveelheid: "120", eenheid: "ml", vervaldatum: vd(18), notitie: "Hoofdkleur voor blackwork",
+                         aangemaakt: Calendar.current.date(byAdding: .day, value: -30, to: nu) ?? nu),
+            VoorraadItem(id: "v-ink2", naam: "Dynamic Color Deep Red",     type: .inkt,
+                         merk: "Dynamic", batchNummer: "DYN-2024-DR-0442", kleur: "Deep Red",
+                         hoeveelheid: "60",  eenheid: "ml", vervaldatum: vd(24), notitie: "",
+                         aangemaakt: Calendar.current.date(byAdding: .day, value: -14, to: nu) ?? nu),
+            VoorraadItem(id: "v-ink3", naam: "World Famous Ocean Blue",    type: .inkt,
+                         merk: "World Famous", batchNummer: "WF-2024-OB-1138", kleur: "Ocean Blue",
+                         hoeveelheid: "30",  eenheid: "ml", vervaldatum: vd(1),  notitie: "Bijna op — nabestellen!",
+                         aangemaakt: Calendar.current.date(byAdding: .month, value: -5, to: nu) ?? nu),
+            VoorraadItem(id: "v-ink4", naam: "Fusion Ink Bright Yellow",   type: .inkt,
+                         merk: "Fusion", batchNummer: "FUS-2025-BY-0077", kleur: "Bright Yellow",
+                         hoeveelheid: "30",  eenheid: "ml", vervaldatum: vd(-2), notitie: "VERLOPEN — verwijderen",
+                         aangemaakt: Calendar.current.date(byAdding: .month, value: -8, to: nu) ?? nu),
+
+            // Naalden
+            VoorraadItem(id: "v-nd1", naam: "Cartridges 7RL",              type: .naald,
+                         merk: "Cheyenne", batchNummer: "", kleur: "7RL",
+                         hoeveelheid: "40",  eenheid: "stuks", vervaldatum: nil, notitie: "Ronde liner voor fine line",
+                         aangemaakt: Calendar.current.date(byAdding: .day, value: -7, to: nu) ?? nu),
+            VoorraadItem(id: "v-nd2", naam: "Cartridges 9M1",              type: .naald,
+                         merk: "Bishop", batchNummer: "", kleur: "9M1",
+                         hoeveelheid: "25",  eenheid: "stuks", vervaldatum: nil, notitie: "Magnum voor shading",
+                         aangemaakt: Calendar.current.date(byAdding: .day, value: -7, to: nu) ?? nu),
+
+            // Verzorging
+            VoorraadItem(id: "v-vz1", naam: "Vaseline Pure",               type: .verzorging,
+                         merk: "Vaseline", batchNummer: "", kleur: "",
+                         hoeveelheid: "5",   eenheid: "potten", vervaldatum: vd(36), notitie: "",
+                         aangemaakt: Calendar.current.date(byAdding: .month, value: -1, to: nu) ?? nu),
+            VoorraadItem(id: "v-vz2", naam: "Green Soap",                  type: .verzorging,
+                         merk: "Sterilon", batchNummer: "", kleur: "",
+                         hoeveelheid: "2",   eenheid: "liter", vervaldatum: vd(12), notitie: "Voor reiniging huid",
+                         aangemaakt: Calendar.current.date(byAdding: .month, value: -2, to: nu) ?? nu),
+
+            // Overig
+            VoorraadItem(id: "v-ov1", naam: "Nitrile handschoenen (M)",    type: .overig,
+                         merk: "Aurelia", batchNummer: "", kleur: "",
+                         hoeveelheid: "3",   eenheid: "dozen", vervaldatum: vd(48), notitie: "",
+                         aangemaakt: Calendar.current.date(byAdding: .month, value: -1, to: nu) ?? nu),
+            VoorraadItem(id: "v-ov2", naam: "A4 thermisch transferpapier", type: .overig,
+                         merk: "Spirit", batchNummer: "", kleur: "",
+                         hoeveelheid: "150", eenheid: "vel",   vervaldatum: nil, notitie: "Voor stencil afdrukken",
+                         aangemaakt: Calendar.current.date(byAdding: .day, value: -3, to: nu) ?? nu),
+        ]
+    }
+
     // MARK: - Berichten shop
 
     static var berichtenShop: [Bericht] {
