@@ -2749,6 +2749,8 @@ struct KlantBerichtenView: View {
     @State private var toonAgendaVraag = false
     @State private var agendaAfspraak: Afspraak? = nil
     @State private var agendaGeslaagd: String? = nil
+    @State private var aanbetalingBericht: Bericht? = nil
+    @State private var aanbetalingAfspraak: Afspraak? = nil
 
     private let df: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
@@ -2808,6 +2810,15 @@ struct KlantBerichtenView: View {
             get: { agendaGeslaagd != nil },
             set: { if !$0 { agendaGeslaagd = nil } }
         )) { Button("OK") { agendaGeslaagd = nil } }
+        .sheet(item: $aanbetalingAfspraak) { afspraak in
+            AanbetalingView(afspraak: afspraak) {
+                if let a = await store.bevestigAfspraak(afspraak.id) {
+                    agendaAfspraak = a
+                    toonAgendaVraag = true
+                }
+                aanbetalingBericht = nil
+            }
+        }
     }
 
     @ViewBuilder
@@ -2833,9 +2844,9 @@ struct KlantBerichtenView: View {
                     if bezig.contains(b.id) {
                         ProgressView().tint(.white)
                     } else {
-                        Button(action: { bevestig(b) }) {
-                            Text("BEVESTIGEN")
-                                .font(.system(size: 11, weight: .bold)).tracking(2)
+                        Button(action: { laadEnToonBetaling(b) }) {
+                            Label("BEVESTIGEN & BETALEN", systemImage: "lock.fill")
+                                .font(.system(size: 11, weight: .bold)).tracking(1.5)
                                 .foregroundColor(.black)
                                 .frame(maxWidth: .infinity).frame(height: 36)
                                 .background(Color.white).cornerRadius(5)
@@ -2857,12 +2868,14 @@ struct KlantBerichtenView: View {
         .overlay(Rectangle().stroke(Color(white: 0.1), lineWidth: 1))
     }
 
-    private func bevestig(_ b: Bericht) {
+    private func laadEnToonBetaling(_ b: Bericht) {
         bezig.insert(b.id)
         Task {
-            if let a = await store.bevestigAfspraak(b.afspraakId) {
-                agendaAfspraak = a
-                toonAgendaVraag = true
+            if let a = await CloudKitManager.shared.fetchAfspraak(id: b.afspraakId) {
+                await MainActor.run {
+                    aanbetalingAfspraak = a
+                    aanbetalingBericht  = b
+                }
             }
             bezig.remove(b.id)
         }
@@ -2918,6 +2931,7 @@ struct KlantAfsprakenoverzichtView: View {
     @State private var toonAgendaVoor: Afspraak? = nil
     @State private var agendaTekst: String? = nil
     @State private var toonAfzeggen: Afspraak? = nil
+    @State private var toonAanbetaling: Afspraak? = nil
 
     private let df: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "nl_NL")
@@ -3003,6 +3017,14 @@ struct KlantAfsprakenoverzichtView: View {
             get: { agendaTekst != nil },
             set: { if !$0 { agendaTekst = nil } }
         )) { Button("OK") { agendaTekst = nil } }
+        .sheet(item: $toonAanbetaling) { afspraak in
+            AanbetalingView(afspraak: afspraak) {
+                if let a = await store.bevestigAfspraak(afspraak.id) {
+                    toonAgendaVoor = a
+                }
+                await herlaad()
+            }
+        }
     }
 
     @ViewBuilder
@@ -3042,6 +3064,27 @@ struct KlantAfsprakenoverzichtView: View {
                             .frame(maxWidth: .infinity).frame(height: 32)
                             .background(Color(white: 0.1)).cornerRadius(5)
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(red: 0.5, green: 0.15, blue: 0.15), lineWidth: 1))
+                    }
+                }
+            } else if a.status == "wacht_klant" {
+                VStack(spacing: 8) {
+                    Button(action: { toonAanbetaling = a }) {
+                        Label("BEVESTIGEN & BETALEN  €9,90", systemImage: "lock.fill")
+                            .font(.system(size: 11, weight: .bold)).tracking(1)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity).frame(height: 36)
+                            .background(Color.white).cornerRadius(5)
+                    }
+                    HStack(spacing: 8) {
+                        Button(action: { toonAfzeggen = a }) {
+                            Text("Intrekken")
+                                .font(.system(size: 11, weight: .semibold)).tracking(1)
+                                .foregroundColor(Color(white: 0.45))
+                                .frame(maxWidth: .infinity).frame(height: 30)
+                                .background(Color(white: 0.08)).cornerRadius(5)
+                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(white: 0.15), lineWidth: 1))
+                        }
+                        printKnop(a)
                     }
                 }
             } else if isActief {
