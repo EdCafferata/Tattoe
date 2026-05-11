@@ -193,6 +193,7 @@ class ArtiesStore: ObservableObject {
             try? await CloudKitManager.shared.saveArties(arties)
             await CloudKitManager.shared.savePubliekArties(arties)
         }
+        startSync()
     }
 
     #if DEBUG
