@@ -954,6 +954,7 @@ struct ShopDashboardView: View {
     @State private var showAfspraken = false
     @State private var showBerichten = false
     @State private var showBeheer    = false
+    @State private var showVoorraad  = false
     @State private var artiesten:    [ArtiestProfiel] = []
 
     var body: some View {
@@ -1062,6 +1063,9 @@ struct ShopDashboardView: View {
         .fullScreenCover(isPresented: $showBeheer) {
             ShopBeheerView().environmentObject(store)
         }
+        .fullScreenCover(isPresented: $showVoorraad) {
+            VoorraadView().environmentObject(store)
+        }
         .task {
             if let email = store.shop?.email {
                 artiesten = await CloudKitManager.shared.fetchArtiesten(voorShop: email)
@@ -1107,6 +1111,13 @@ struct ShopDashboardView: View {
                     Text("·").foregroundColor(Color(white: 0.15))
                     Button(action: { showBeheer = true }) {
                         Text("BEHEER")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(2)
+                            .foregroundColor(Color(white: 0.28))
+                    }
+                    Text("·").foregroundColor(Color(white: 0.15))
+                    Button(action: { showVoorraad = true }) {
+                        Text("VOORRAAD")
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(2)
                             .foregroundColor(Color(white: 0.28))

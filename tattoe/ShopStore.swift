@@ -73,6 +73,7 @@ class ShopStore: ObservableObject {
     @Published var isLoggedIn:      Bool      = false
     @Published var isCheckingCloud: Bool      = false
     @Published var berichten:       [Bericht] = []
+    @Published var voorraad:        [VoorraadItem] = []
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
     @Published var afsprakenaandacht: Int = 0
@@ -98,9 +99,10 @@ class ShopStore: ObservableObject {
         return max(0, Calendar.current.dateComponents([.day], from: Date(), to: verloopdatum).day ?? 0)
     }
 
-    private let loginKey   = "shop_logged_in"
-    private let dataKey    = "shop_data"
-    private let gelezenKey = "shop_gelezen_berichten"
+    private let loginKey      = "shop_logged_in"
+    private let dataKey       = "shop_data"
+    private let gelezenKey    = "shop_gelezen_berichten"
+    private let voorraadKey   = "shop_voorraad"
     private var syncTask:   Task<Void, Never>?
     private var gelezenIds: Set<String> = []
 
@@ -126,6 +128,10 @@ class ShopStore: ObservableObject {
         }
         if let arr = UserDefaults.standard.array(forKey: gelezenKey) as? [String] {
             gelezenIds = Set(arr)
+        }
+        if let data = UserDefaults.standard.data(forKey: voorraadKey),
+           let decoded = try? JSONDecoder().decode([VoorraadItem].self, from: data) {
+            voorraad = decoded
         }
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
@@ -401,5 +407,30 @@ class ShopStore: ObservableObject {
     private func requestNotificationPermission() async {
         try? await UNUserNotificationCenter.current()
             .requestAuthorization(options: [.badge])
+    }
+
+    // MARK: - Voorraad beheer
+
+    func voegVoorraadToe(_ item: VoorraadItem) {
+        voorraad.append(item)
+        slaVoorraadOp()
+    }
+
+    func werkVoorraadBij(_ item: VoorraadItem) {
+        if let idx = voorraad.firstIndex(where: { $0.id == item.id }) {
+            voorraad[idx] = item
+            slaVoorraadOp()
+        }
+    }
+
+    func verwijderVoorraad(id: String) {
+        voorraad.removeAll { $0.id == id && !$0.isVast }
+        slaVoorraadOp()
+    }
+
+    private func slaVoorraadOp() {
+        if let data = try? JSONEncoder().encode(voorraad) {
+            UserDefaults.standard.set(data, forKey: voorraadKey)
+        }
     }
 }
