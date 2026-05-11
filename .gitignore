@@ -1,6 +1,11 @@
 # Claude Code
 .claude/
 
+# Fastlane secrets (nooit committen)
+fastlane/.env
+fastlane/.env.*
+*.p8
+
 # Xcode
 xcuserdata/
 *.xcscmblueprint
