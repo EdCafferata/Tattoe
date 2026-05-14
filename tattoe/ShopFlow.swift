@@ -1080,7 +1080,7 @@ struct ShopDashboardView: View {
                                     Image(systemName: "clock")
                                         .font(.system(size: 14))
                                         .foregroundColor(Color(white: 0.5))
-                                    Text("Beheer openingstijden shop")
+                                    Text("Beheer openingstijden")
                                         .font(.system(size: 13))
                                         .foregroundColor(Color(white: 0.7))
                                     Spacer()
