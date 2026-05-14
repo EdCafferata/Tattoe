@@ -2408,21 +2408,36 @@ private struct ShopInfoKaartje: View {
     }
 
     private func emailUitWebsite(_ url: URL) async -> String? {
-        // Voeg timeout toe zodat trage sites de UI niet blokkeren
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForRequest = 6
         let session = URLSession(configuration: config)
 
-        guard let (data, _) = try? await session.data(from: url) else { return nil }
-        let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+        // Stap 1: homepage — zoek direct naar email
+        if let (data, _) = try? await session.data(from: url) {
+            let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+            if let email = emailUitHTML(html) { return email }
 
-        // Patroon 1: mailto: link (meest betrouwbaar)
+            // Stap 2: contactpagina — href in homepage HTML, anders vast /contact pad
+            let cURL = contactHref(vanHTML: html, basis: url)
+                    ?? URL(string: (url.scheme ?? "https") + "://" + (url.host ?? "") + "/contact")
+            if let cURL, cURL.host == url.host,
+               let (cData, _) = try? await session.data(from: cURL) {
+                let cHtml = String(data: cData, encoding: .utf8) ?? String(data: cData, encoding: .isoLatin1) ?? ""
+                if let email = emailUitHTML(cHtml) { return email }
+            }
+        }
+
+        // Stap 3: construeer info@domein van de website URL
+        return emailVanURL(url)
+    }
+
+    private func emailUitHTML(_ html: String) -> String? {
+        // Patroon 1: mailto: link
         let mailtoPattern = #"mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})"#
         if let range = html.range(of: mailtoPattern, options: .regularExpression) {
             let found = String(html[range]).replacingOccurrences(of: "mailto:", with: "")
             if isGeldigEmail(found) { return found }
         }
-
         // Patroon 2: los e-mailadres in HTML tekst
         let emailPattern = #"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"#
         var zoekVanaf = html.startIndex
@@ -2432,6 +2447,29 @@ private struct ShopInfoKaartje: View {
             zoekVanaf = range.upperBound
         }
         return nil
+    }
+
+    // Zoekt een href met "contact" of "kontakt" in de HTML en geeft de absolute URL terug
+    private func contactHref(vanHTML html: String, basis: URL) -> URL? {
+        let pattern = #"href=["']([^"']*(?:contact|kontakt|contacteer)[^"']*)["']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              match.numberOfRanges > 1,
+              let r = Range(match.range(at: 1), in: html) else { return nil }
+        let href = String(html[r])
+        guard !href.isEmpty, !href.hasPrefix("#"), !href.hasPrefix("javascript") else { return nil }
+        if href.hasPrefix("http") { return URL(string: href) }
+        if href.hasPrefix("/") {
+            return URL(string: (basis.scheme ?? "https") + "://" + (basis.host ?? "") + href)
+        }
+        return URL(string: href, relativeTo: basis)?.absoluteURL
+    }
+
+    // Leidt info@domein af door http(s), ://, www. te verwijderen uit het URL-host
+    private func emailVanURL(_ url: URL) -> String? {
+        guard let host = url.host, host.contains(".") else { return nil }
+        let domein = host.lowercased().hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return "info@\(domein)"
     }
 
     private func isGeldigEmail(_ email: String) -> Bool {
