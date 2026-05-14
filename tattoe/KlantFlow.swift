@@ -1068,7 +1068,7 @@ Met vriendelijke groet,
                             )
                             BevestigingRij(
                                 icoon: "icloud.fill",
-                                tekst: "Alle gegevens worden uitsluitend opgeslagen bij Apple en zijn altijd direct door uzelf te verwijderen via de optie in uw app."
+                                tekst: "Alle gegevens worden uitsluitend opgeslagen bij Apple. U kunt uw gegevens altijd zelf direct verwijderen via 'Account verwijderen' in uw Tattoe-app."
                             )
                         }
                         .padding(.horizontal, 32)
