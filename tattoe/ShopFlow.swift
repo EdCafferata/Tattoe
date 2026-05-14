@@ -946,16 +946,18 @@ struct ShopNAWView: View {
 
 // MARK: - Dashboard
 
+private enum ShopSheet: String, Identifiable {
+    case bewerken, afspraken, berichten, beheer, voorraad
+    var id: String { rawValue }
+}
+
 struct ShopDashboardView: View {
     @EnvironmentObject var store: ShopStore
     let onLogout: () -> Void
 
-    @State private var showBewerken  = false
-    @State private var showAfspraken = false
-    @State private var showBerichten = false
-    @State private var showBeheer    = false
-    @State private var showVoorraad  = false
-    @State private var artiesten:    [ArtiestProfiel] = []
+    @State private var actieveSheet: ShopSheet?
+    @State private var showWebsiteProAlert = false
+    @State private var artiesten:         [ArtiestProfiel] = []
 
     var body: some View {
         ZStack {
@@ -967,12 +969,12 @@ struct ShopDashboardView: View {
                     AandachtBanner(
                         berichten:  store.ongelezen,
                         afspraken:  store.afsprakenaandacht,
-                        onBerichten:  { showBerichten = true },
-                        onAfspraken:  { showAfspraken = true }
+                        onBerichten:  { actieveSheet = .berichten },
+                        onAfspraken:  { actieveSheet = .afspraken }
                     )
 
                     dashSection("BERICHTEN") {
-                        Button(action: { showBerichten = true }) {
+                        Button(action: { actieveSheet = .berichten }) {
                             HStack {
                                 Image(systemName: "message")
                                     .font(.system(size: 14))
@@ -997,7 +999,7 @@ struct ShopDashboardView: View {
                         .buttonStyle(.plain)
                     }
                     dashSection("AFSPRAKEN") {
-                        Button(action: { showAfspraken = true }) {
+                        Button(action: { actieveSheet = .afspraken }) {
                             HStack {
                                 Image(systemName: "calendar.badge.clock")
                                     .font(.system(size: 14))
@@ -1009,6 +1011,51 @@ struct ShopDashboardView: View {
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 11))
                                     .foregroundColor(Color(white: 0.3))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    dashSection("VOORRAAD") {
+                        Button(action: { actieveSheet = .voorraad }) {
+                            HStack {
+                                Image(systemName: "shippingbox")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.5))
+                                Text("Beheer voorraad")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.7))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(white: 0.3))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    dashSection("WEBSITE") {
+                        let isPro = store.shop?.abonnementType == "pro" && store.heeftToegang
+                        Button(action: { if isPro { } else { showWebsiteProAlert = true } }) {
+                            HStack {
+                                Image(systemName: isPro ? "globe" : "lock.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(isPro ? Color(white: 0.5) : Color(white: 0.3))
+                                Text("Beheer website")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(isPro ? Color(white: 0.7) : Color(white: 0.35))
+                                Spacer()
+                                if !isPro {
+                                    Text("PRO")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .tracking(1)
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 6).padding(.vertical, 3)
+                                        .background(Color.white)
+                                        .cornerRadius(4)
+                                } else {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(white: 0.3))
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -1051,20 +1098,19 @@ struct ShopDashboardView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showBewerken) {
-            ShopNAWView(onLogout: onLogout).environmentObject(store)
+        .fullScreenCover(item: $actieveSheet) { sheet in
+            switch sheet {
+            case .bewerken:  ShopNAWView(onLogout: onLogout).environmentObject(store)
+            case .afspraken: ShopAfsprakenView().environmentObject(store)
+            case .berichten: ShopBerichtenView().environmentObject(store)
+            case .beheer:    ShopBeheerView().environmentObject(store)
+            case .voorraad:  VoorraadView().environmentObject(store)
+            }
         }
-        .fullScreenCover(isPresented: $showAfspraken) {
-            ShopAfsprakenView().environmentObject(store)
-        }
-        .fullScreenCover(isPresented: $showBerichten) {
-            ShopBerichtenView().environmentObject(store)
-        }
-        .fullScreenCover(isPresented: $showBeheer) {
-            ShopBeheerView().environmentObject(store)
-        }
-        .fullScreenCover(isPresented: $showVoorraad) {
-            VoorraadView().environmentObject(store)
+        .alert("Pro-functie", isPresented: $showWebsiteProAlert) {
+            Button("Sluiten", role: .cancel) {}
+        } message: {
+            Text("Beheer website is exclusief voor Pro-abonnees. Upgrade je abonnement om een automatische shopwebsite te genereren en beheren.")
         }
         .task {
             if let email = store.shop?.email {
@@ -1102,22 +1148,15 @@ struct ShopDashboardView: View {
                 }
                 Spacer().frame(height: 4)
                 HStack(spacing: 14) {
-                    Button(action: { showBewerken = true }) {
+                    Button(action: { actieveSheet = .bewerken }) {
                         Text("AANPASSEN")
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(2)
                             .foregroundColor(Color(white: 0.28))
                     }
                     Text("·").foregroundColor(Color(white: 0.15))
-                    Button(action: { showBeheer = true }) {
+                    Button(action: { actieveSheet = .beheer }) {
                         Text("BEHEER")
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(2)
-                            .foregroundColor(Color(white: 0.28))
-                    }
-                    Text("·").foregroundColor(Color(white: 0.15))
-                    Button(action: { showVoorraad = true }) {
-                        Text("VOORRAAD")
                             .font(.system(size: 9, weight: .semibold))
                             .tracking(2)
                             .foregroundColor(Color(white: 0.28))

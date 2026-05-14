@@ -895,6 +895,15 @@ struct KlantConsentView: View {
                     .disabled(!alleAkkoord)
                     .animation(.easeInOut(duration: 0.2), value: alleAkkoord)
 
+                    #if DEBUG
+                    Button(action: { store.saveConsent() }) {
+                        Text("DEV: Sla consent over")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(white: 0.25))
+                    }
+                    .padding(.top, 4)
+                    #endif
+
                     Button(action: { store.logout(); onLogout() }) {
                         Text("UITLOGGEN")
                             .font(.system(size: 10))
