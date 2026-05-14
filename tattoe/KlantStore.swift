@@ -124,7 +124,8 @@ class KlantStore: ObservableObject {
     @Published var favorietShop:         ShopProfiel?    = nil
     @Published var berichten:            [Bericht]       = []
     @Published var profielFotoData:      Data?           = nil
-    @Published var tijdelijkSyncGedaan:  Bool = false
+    @Published var tijdelijkSyncGedaan:       Bool = false
+    @Published var tijdelijkBevestigingTonen: Bool = false
 
     // Tijdelijk modus: data alleen lokaal, sync pas bij consent, daarna alles opruimen
     var tijdelijkModus = false
@@ -175,8 +176,9 @@ class KlantStore: ObservableObject {
         favorietShop       = nil
         berichten          = []
         profielFotoData    = nil
-        tijdelijkSyncGedaan = false
-        tijdelijkModus     = true
+        tijdelijkSyncGedaan       = false
+        tijdelijkBevestigingTonen = false
+        tijdelijkModus            = true
     }
 
     func saveProfielFoto(_ data: Data) {
@@ -266,21 +268,27 @@ class KlantStore: ObservableObject {
         if let klant { Task { try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true) } }
     }
 
-    // Finale sync na mail (tijdelijk modus)
+    // Finale sync na mail (tijdelijk modus) — toont bevestiging vóór opruimen
     func saveConsentEnSync(pdfData: Data?) {
         guard tijdelijkModus, let klant else { return }
         Task {
             try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true, consentPDF: pdfData)
             await MainActor.run {
-                self.stopSync()
-                self.klant           = nil
-                self.isLoggedIn      = false
-                self.consentGegeven  = false
-                self.berichten       = []
-                self.profielFotoData = nil
-                self.tijdelijkSyncGedaan = true
+                self.tijdelijkBevestigingTonen = true // toon bevestigingsscherm
             }
         }
+    }
+
+    // Aangeroepen na "OK" op bevestigingsscherm
+    func bevestigingGezien() {
+        stopSync()
+        klant                     = nil
+        isLoggedIn                = false
+        consentGegeven            = false
+        berichten                 = []
+        profielFotoData           = nil
+        tijdelijkBevestigingTonen = false
+        tijdelijkSyncGedaan       = true
     }
 
     func slaFavorietArties(_ profiel: ArtiestProfiel) {

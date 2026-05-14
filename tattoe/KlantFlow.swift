@@ -1034,6 +1034,65 @@ Met vriendelijke groet,
                     .padding(.vertical, 14)
                 }
             }
+
+            // ── Bevestiging na registratie ─────────────────
+            if store.tijdelijkBevestigingTonen {
+                ZStack {
+                    Color.black.opacity(0.96).ignoresSafeArea()
+
+                    VStack(spacing: 0) {
+                        Spacer()
+
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 56))
+                            .foregroundColor(.white)
+
+                        Spacer().frame(height: 24)
+
+                        Text("REGISTRATIE VOLTOOID")
+                            .font(.system(size: 20, weight: .black))
+                            .tracking(4)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+
+                        Spacer().frame(height: 20)
+
+                        VStack(spacing: 12) {
+                            BevestigingRij(
+                                icoon: "envelope.fill",
+                                tekst: "De getekende formulieren zijn verstuurd naar \(store.klant.map { "\($0.voornaam) \($0.achternaam)" } ?? "de klant") en naar \(store.shopNaamVoorConsent.isEmpty ? "de studio" : store.shopNaamVoorConsent)."
+                            )
+                            BevestigingRij(
+                                icoon: "archivebox.fill",
+                                tekst: "Het consentformulier is opgeslagen in de administratie van de shop."
+                            )
+                            BevestigingRij(
+                                icoon: "icloud.fill",
+                                tekst: "Alle gegevens zijn veilig bewaard in de Tattoe-database."
+                            )
+                        }
+                        .padding(.horizontal, 32)
+
+                        Spacer().frame(height: 40)
+
+                        Button(action: { store.bevestigingGezien() }) {
+                            Text("OK")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(4)
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .padding(.horizontal, 32)
+
+                        Spacer()
+                    }
+                }
+                .transition(.opacity)
+                .animation(.easeIn(duration: 0.25), value: store.tijdelijkBevestigingTonen)
+            }
         }
     }
 
@@ -1145,6 +1204,29 @@ Met vriendelijke groet,
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Bevestiging rij
+
+private struct BevestigingRij: View {
+    let icoon: String
+    let tekst: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icoon)
+                .font(.system(size: 16))
+                .foregroundColor(Color(white: 0.6))
+                .frame(width: 22)
+                .padding(.top, 1)
+            Text(tekst)
+                .font(.system(size: 13))
+                .tracking(0.2)
+                .foregroundColor(Color(white: 0.55))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
     }
 }
 
