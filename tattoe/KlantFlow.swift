@@ -1116,17 +1116,37 @@ private struct TattoePinView: View {
 
 // MARK: - Dashboard
 
-#if DEBUG
-private let standaardCoord = CLLocationCoordinate2D(latitude: 51.4416, longitude: 5.4697) // Eindhoven
-#else
-private let standaardCoord = CLLocationCoordinate2D(latitude: 52.3676, longitude: 4.9041) // Amsterdam fallback
-#endif
+private func hoofdstadCoord(voor landCode: String) -> CLLocationCoordinate2D {
+    let h: [String: (Double, Double)] = [
+        "NL": (52.3676,  4.9041),  // Amsterdam
+        "BE": (50.8503,  4.3517),  // Brussel
+        "DE": (52.5200, 13.4050),  // Berlijn
+        "FR": (48.8566,  2.3522),  // Parijs
+        "GB": (51.5074, -0.1278),  // Londen
+        "US": (38.9072,-77.0369),  // Washington DC
+        "AU":(-35.2809,149.1300),  // Canberra
+        "CA": (45.4215,-75.6972),  // Ottawa
+        "ES": (40.4168, -3.7038),  // Madrid
+        "IT": (41.9028, 12.4964),  // Rome
+        "PT": (38.7169, -9.1399),  // Lissabon
+        "CH": (46.9480,  7.4474),  // Bern
+        "AT": (48.2082, 16.3738),  // Wenen
+        "SE": (59.3293, 18.0686),  // Stockholm
+        "NO": (59.9139, 10.7522),  // Oslo
+        "DK": (55.6761, 12.5683),  // Kopenhagen
+        "FI": (60.1699, 24.9384),  // Helsinki
+        "PL": (52.2297, 21.0122),  // Warschau
+    ]
+    let (lat, lon) = h[landCode] ?? (52.3676, 4.9041)
+    return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+}
 
 // Wikkelt CLLocationManager zodat SwiftUI de locatie kan observeren
 @MainActor
 @Observable
 final class LocatieBeheerder: NSObject, CLLocationManagerDelegate {
     var locatie: CLLocationCoordinate2D? = nil
+    var landCode: String { Locale.current.region?.identifier ?? "NL" }
     private let manager = CLLocationManager()
 
     override init() {
@@ -1167,10 +1187,11 @@ struct KlantDashboardView: View {
     @State private var kaartZoekterm   = ""
     @State private var zoekResultaten: [ShopPin] = []
     @State private var ladenZoek       = false
+    @State private var centrumCoord: CLLocationCoordinate2D? = nil
     @State private var geselecteerdePin: ShopPin? = nil
     @State private var cameraPosition  = MapCameraPosition.region(MKCoordinateRegion(
-        center: standaardCoord,
-        span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)
+        center: CLLocationCoordinate2D(latitude: 52.3676, longitude: 4.9041),
+        span: MKCoordinateSpan(latitudeDelta: 3.0, longitudeDelta: 3.0)
     ))
     #if !DEBUG
     @State private var locatieBeheerder = LocatieBeheerder()
@@ -1193,19 +1214,12 @@ struct KlantDashboardView: View {
     }
 
     private var dichtstbijzijndeShops: [ShopPin] {
-        #if DEBUG
-        let centrum = standaardCoord
-        #else
-        let centrum = locatieBeheerder.locatie ?? standaardCoord
-        #endif
+        let centrum = centrumCoord ?? hoofdstadCoord(voor: Locale.current.region?.identifier ?? "NL")
         let metLocatie: [ShopPin] = alleShops.compactMap { shop in
             guard let coord = shopLocaties[shop.email] else { return nil }
             return ShopPin(id: shop.email, naam: shop.bedrijfsnaam, coordinate: coord, email: shop.email)
         }
-        let gesorteerd = metLocatie.sorted {
-            afstand($0.coordinate, centrum) < afstand($1.coordinate, centrum)
-        }
-        return Array(gesorteerd.prefix(5))
+        return metLocatie.sorted { afstand($0.coordinate, centrum) < afstand($1.coordinate, centrum) }
     }
 
     var body: some View {
@@ -1449,10 +1463,7 @@ struct KlantDashboardView: View {
         #if !DEBUG
         .onChange(of: locatieBeheerder.locatie?.latitude) { _, _ in
             guard let loc = locatieBeheerder.locatie else { return }
-            cameraPosition = .region(MKCoordinateRegion(
-                center: loc,
-                span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)
-            ))
+            centrumCoord = loc
             Task { await zoekTattooshopsOpKaart(nabij: loc) }
         }
         #endif
@@ -1467,7 +1478,7 @@ struct KlantDashboardView: View {
             if let shop = store.favorietShop, !shop.woonplaats.isEmpty {
                 Task {
                     let geocoder = CLGeocoder()
-                    if let p = try? await geocoder.geocodeAddressString(shop.woonplaats + ", Nederland"),
+                    if let p = try? await geocoder.geocodeAddressString(shop.woonplaats),
                        let loc = p.first?.location { favorietShopLocatie = loc.coordinate }
                 }
             }
@@ -1476,7 +1487,7 @@ struct KlantDashboardView: View {
             if let artiest = store.favorietArties, !artiest.woonplaats.isEmpty {
                 Task {
                     let geocoder = CLGeocoder()
-                    if let p = try? await geocoder.geocodeAddressString(artiest.woonplaats + ", Nederland"),
+                    if let p = try? await geocoder.geocodeAddressString(artiest.woonplaats),
                        let loc = p.first?.location { favorietArtiesLocatie = loc.coordinate }
                 }
             } else {
@@ -1600,9 +1611,8 @@ struct KlantDashboardView: View {
     private func laadAlles() async {
         ladenKaart = true
 
-        // CloudKit shops ophalen + geocoden (app-shops, witte pins)
+        // 1. Shops ophalen
         alleShops = await CloudKitManager.shared.fetchPubliekeShops()
-
         #if DEBUG
         for shop in TestData.shops where !alleShops.contains(where: { $0.id == shop.id }) {
             alleShops.append(shop)
@@ -1612,30 +1622,40 @@ struct KlantDashboardView: View {
         }
         #endif
 
+        // 2. Locatie bepalen: GPS → hoofdstad apparaatland
+        #if DEBUG
+        let centrum = CLLocationCoordinate2D(latitude: 51.4416, longitude: 5.4697)
+        #else
+        let centrum = locatieBeheerder.locatie ?? hoofdstadCoord(voor: locatieBeheerder.landCode)
+        #endif
+        centrumCoord = centrum
+
+        // 3. Brede beginzoom (wordt overschreven door iteratief zoeken)
+        cameraPosition = .region(MKCoordinateRegion(
+            center: centrum,
+            span: MKCoordinateSpan(latitudeDelta: 1.0, longitudeDelta: 1.0)
+        ))
+
+        // 4. Geocode in-app shops
         await geocodeShops()
 
-        // Alle tattooshops via Apple Maps zoeken (ook niet in app, rode pins)
-        #if DEBUG
-        let centrumVoorZoeken = standaardCoord
-        #else
-        let centrumVoorZoeken = locatieBeheerder.locatie ?? standaardCoord
-        #endif
-        await zoekTattooshopsOpKaart(nabij: centrumVoorZoeken)
+        // 5. Iteratief zoeken totdat ≥5 shops zichtbaar zijn
+        await zoekTattooshopsOpKaart(nabij: centrum)
 
         ladenKaart = false
 
-        // Geocode favorieten voor op kaart
+        // 6. Geocode favorieten voor op kaart
         let geocoder = CLGeocoder()
         if let shop = store.favorietShop, favorietShopLocatie == nil, !shop.woonplaats.isEmpty {
-            if let p = try? await geocoder.geocodeAddressString(shop.woonplaats + ", Nederland"),
+            if let p = try? await geocoder.geocodeAddressString(shop.woonplaats),
                let loc = p.first?.location { favorietShopLocatie = loc.coordinate }
         }
         if let artiest = store.favorietArties, favorietArtiesLocatie == nil, !artiest.woonplaats.isEmpty {
-            if let p = try? await geocoder.geocodeAddressString(artiest.woonplaats + ", Nederland"),
+            if let p = try? await geocoder.geocodeAddressString(artiest.woonplaats),
                let loc = p.first?.location { favorietArtiesLocatie = loc.coordinate }
         }
 
-        // Artiesten van geselecteerde shop
+        // 7. Artiesten van geselecteerde shop
         if let shop = store.favorietShop {
             ladenArtiesten = true
             shopArtiesten = await CloudKitManager.shared.fetchArtiesten(voorShop: shop.email)
@@ -1644,68 +1664,64 @@ struct KlantDashboardView: View {
     }
 
     private func zoekTattooshopsOpKaart(nabij center: CLLocationCoordinate2D) async {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = "tattoo"
-        request.region = MKCoordinateRegion(
-            center: center,
-            span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
-        )
-        guard let response = try? await MKLocalSearch(request: request).start() else { return }
+        var zoekSpan = 0.25
+        var gevonden: [ShopPin] = []
 
-        zoekResultaten = response.mapItems.prefix(5).map { item in
-            ShopPin(
-                id: "\(item.placemark.coordinate.latitude)-\(item.name ?? "")",
-                naam: item.name ?? "Tattoo Shop",
-                coordinate: item.placemark.coordinate,
-                email: "",
-                mapItem: item
+        for _ in 0..<6 {
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = "tattoo"
+            request.region = MKCoordinateRegion(
+                center: center,
+                span: MKCoordinateSpan(latitudeDelta: zoekSpan, longitudeDelta: zoekSpan)
             )
+            if let response = try? await MKLocalSearch(request: request).start() {
+                gevonden = response.mapItems.map { item in
+                    ShopPin(
+                        id: "\(item.placemark.coordinate.latitude)-\(item.name ?? "")",
+                        naam: item.name ?? "Tattoo Shop",
+                        coordinate: item.placemark.coordinate,
+                        email: "",
+                        mapItem: item
+                    )
+                }
+            }
+            if gevonden.count + dichtstbijzijndeShops.count >= 5 { break }
+            zoekSpan = min(zoekSpan * 2.5, 15.0)
         }
 
-        // Zoom strak in op de gevonden shops (max span 0.08 zodat pins goed klikbaar zijn)
-        let allePins = zoekResultaten + dichtstbijzijndeShops
-        guard !allePins.isEmpty else { return }
-        let lats = allePins.map { $0.coordinate.latitude }
-        let lons = allePins.map { $0.coordinate.longitude }
-        let spanLat = min(max((lats.max()! - lats.min()!) * 1.5, 0.04), 0.12)
-        let spanLon = min(max((lons.max()! - lons.min()!) * 1.5, 0.04), 0.12)
-        cameraPosition = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: (lats.min()! + lats.max()!) / 2,
-                                           longitude: (lons.min()! + lons.max()!) / 2),
-            span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
-        ))
+        zoekResultaten = gevonden
+
+        // Camera aanpassen op alle gevonden pins
+        let allePins = gevonden + dichtstbijzijndeShops
+        if allePins.isEmpty {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: center,
+                span: MKCoordinateSpan(latitudeDelta: zoekSpan, longitudeDelta: zoekSpan)
+            ))
+        } else {
+            let lats = allePins.map { $0.coordinate.latitude }
+            let lons = allePins.map { $0.coordinate.longitude }
+            let spanLat = max((lats.max()! - lats.min()!) * 1.6, 0.08)
+            let spanLon = max((lons.max()! - lons.min()!) * 1.6, 0.08)
+            cameraPosition = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                    latitude: (lats.min()! + lats.max()!) / 2,
+                    longitude: (lons.min()! + lons.max()!) / 2
+                ),
+                span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
+            ))
+        }
     }
 
     private func geocodeShops() async {
         let geocoder = CLGeocoder()
         for shop in alleShops {
             guard shopLocaties[shop.email] == nil, !shop.woonplaats.isEmpty else { continue }
-            if let placemark = try? await geocoder.geocodeAddressString(shop.woonplaats + ", Nederland"),
+            if let placemark = try? await geocoder.geocodeAddressString(shop.woonplaats),
                let loc = placemark.first?.location {
                 shopLocaties[shop.email] = loc.coordinate
             }
         }
-        pasCameraAanOpShops()
-    }
-
-    private func pasCameraAanOpShops() {
-        let pins = dichtstbijzijndeShops
-        guard !pins.isEmpty else { return }
-
-        let lats = pins.map(\.coordinate.latitude)
-        let lons = pins.map(\.coordinate.longitude)
-        let minLat = lats.min()!, maxLat = lats.max()!
-        let minLon = lons.min()!, maxLon = lons.max()!
-
-        let centerLat = (minLat + maxLat) / 2
-        let centerLon = (minLon + maxLon) / 2
-        let spanLat   = max((maxLat - minLat) * 1.6, 0.05)
-        let spanLon   = max((maxLon - minLon) * 1.6, 0.05)
-
-        cameraPosition = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
-            span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
-        ))
     }
 
     private func afstand(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
@@ -1721,7 +1737,7 @@ struct KlantDashboardView: View {
         defer { ladenZoek = false }
 
         let geocoder = CLGeocoder()
-        guard let placemark = try? await geocoder.geocodeAddressString(term + ", Nederland"),
+        guard let placemark = try? await geocoder.geocodeAddressString(term),
               let center = placemark.first?.location?.coordinate else { return }
 
         await zoekTattooshopsOpKaart(nabij: center)
