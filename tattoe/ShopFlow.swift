@@ -1005,7 +1005,7 @@ struct ShopNAWView: View {
 // MARK: - Dashboard
 
 private enum ShopSheet: String, Identifiable {
-    case bewerken, afspraken, berichten, beheer, voorraad
+    case bewerken, afspraken, berichten, beheer, voorraad, openingstijden
     var id: String { rawValue }
 }
 
@@ -1063,6 +1063,23 @@ struct ShopDashboardView: View {
                                     .font(.system(size: 14))
                                     .foregroundColor(Color(white: 0.5))
                                 Text("Bekijk afspraakaanvragen")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.7))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(white: 0.3))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    dashSection("OPENINGSTIJDEN") {
+                        Button(action: { actieveSheet = .openingstijden }) {
+                            HStack {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(white: 0.5))
+                                Text("Beheer openingstijden shop")
                                     .font(.system(size: 13))
                                     .foregroundColor(Color(white: 0.7))
                                 Spacer()
@@ -1162,7 +1179,8 @@ struct ShopDashboardView: View {
             case .afspraken: ShopAfsprakenView().environmentObject(store)
             case .berichten: ShopBerichtenView().environmentObject(store)
             case .beheer:    ShopBeheerView().environmentObject(store)
-            case .voorraad:  VoorraadView().environmentObject(store)
+            case .voorraad:        VoorraadView().environmentObject(store)
+            case .openingstijden:  ShopOpeningstijdenView().environmentObject(store)
             }
         }
         .alert("Pro-functie", isPresented: $showWebsiteProAlert) {
@@ -2473,5 +2491,185 @@ struct ShopBeheerView: View {
         let df = DateFormatter()
         df.locale = Locale(identifier: "nl_NL")
         return df.monthSymbols[m - 1].capitalized
+    }
+}
+
+// MARK: - Openingstijden
+
+private let dagNamen = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"]
+
+struct OpeningsDag: Identifiable, Codable {
+    let id: Int       // 0 = ma … 6 = zo
+    var geopend: Bool
+    var van:     String // "09:00"
+    var tot:     String // "17:00"
+}
+
+struct ShopOpeningstijdenView: View {
+    @EnvironmentObject var store: ShopStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var dagen: [OpeningsDag] = ShopOpeningstijdenView.laadDagen()
+    @State private var opgeslagen = false
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 72)
+
+                    Text("OPENINGSTIJDEN")
+                        .font(.system(size: 22, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.white)
+                        .padding(.bottom, 6)
+
+                    Text("Geef aan op welke dagen en tijden uw shop open is.")
+                        .font(.system(size: 11))
+                        .tracking(0.5)
+                        .foregroundColor(Color(white: 0.4))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 32)
+
+                    VStack(spacing: 1) {
+                        ForEach($dagen) { $dag in
+                            DagRij(dag: $dag)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 32)
+
+                    if opgeslagen {
+                        Text("Opgeslagen ✓")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(white: 0.5))
+                            .padding(.bottom, 8)
+                    }
+
+                    Button(action: slaOp) {
+                        Text("OPSLAAN")
+                            .font(.system(size: 14, weight: .black))
+                            .tracking(4)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 48)
+                }
+            }
+
+            // Header
+            HStack {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                        Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                    }
+                    .foregroundColor(Color(white: 0.35))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+        }
+    }
+
+    private func slaOp() {
+        if let data = try? JSONEncoder().encode(dagen) {
+            UserDefaults.standard.set(data, forKey: ShopOpeningstijdenView.openingstijdenKey(store.shop?.email ?? ""))
+        }
+        Task { await syncOpeningstijden() }
+        withAnimation { opgeslagen = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { opgeslagen = false }
+    }
+
+    private func syncOpeningstijden() async {
+        guard let email = store.shop?.email, !email.isEmpty else { return }
+        let tekst = dagen.map { dag -> String in
+            guard dag.geopend else { return "\(dagNamen[dag.id]): Gesloten" }
+            return "\(dagNamen[dag.id]): \(dag.van) – \(dag.tot)"
+        }.joined(separator: "\n")
+        await CloudKitManager.shared.slaOpeningstijdenOp(shopEmail: email, tekst: tekst)
+    }
+
+    static func laadDagen(voorShop email: String = "") -> [OpeningsDag] {
+        let key = openingstijdenKey(email)
+        if let data = UserDefaults.standard.data(forKey: key),
+           let opgeslagen = try? JSONDecoder().decode([OpeningsDag].self, from: data) {
+            return opgeslagen
+        }
+        return (0..<7).map { i in
+            OpeningsDag(id: i, geopend: i < 5, van: "09:00", tot: "17:00")
+        }
+    }
+
+    static func openingstijdenKey(_ email: String) -> String {
+        "openingstijden_\(email)"
+    }
+}
+
+private struct DagRij: View {
+    @Binding var dag: OpeningsDag
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Text(dagNamen[dag.id])
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(dag.geopend ? .white : Color(white: 0.35))
+                    .frame(width: 90, alignment: .leading)
+
+                Spacer()
+
+                if dag.geopend {
+                    HStack(spacing: 6) {
+                        TijdVeld(tijd: $dag.van)
+                        Text("–")
+                            .foregroundColor(Color(white: 0.4))
+                            .font(.system(size: 13))
+                        TijdVeld(tijd: $dag.tot)
+                    }
+                } else {
+                    Text("Gesloten")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(white: 0.3))
+                }
+
+                Toggle("", isOn: $dag.geopend)
+                    .labelsHidden()
+                    .tint(Color(white: 0.7))
+                    .frame(width: 44)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(white: dag.geopend ? 0.07 : 0.04))
+
+            Rectangle()
+                .fill(Color(white: 0.1))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct TijdVeld: View {
+    @Binding var tijd: String
+
+    var body: some View {
+        TextField("", text: $tijd)
+            .font(.system(size: 13, weight: .medium).monospacedDigit())
+            .foregroundColor(.white)
+            .multilineTextAlignment(.center)
+            .keyboardType(.numbersAndPunctuation)
+            .frame(width: 52, height: 32)
+            .background(Color(white: 0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.2), lineWidth: 1))
     }
 }

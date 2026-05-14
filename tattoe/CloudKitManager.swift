@@ -399,6 +399,14 @@ final class CloudKitManager {
         try? await publicDb.save(record)
     }
 
+    func slaOpeningstijdenOp(shopEmail: String, tekst: String) async {
+        guard !shopEmail.isEmpty else { return }
+        let id     = CKRecord.ID(recordName: "shopprofiel_\(shopEmail.lowercased())")
+        let record = (try? await publicDb.record(for: id)) ?? CKRecord(recordType: "ShopProfiel", recordID: id)
+        record["openingstijden"] = tekst
+        try? await publicDb.save(record)
+    }
+
     func fetchPubliekeShops() async -> [ShopProfiel] {
         let pred  = NSPredicate(value: true)
         let query = CKQuery(recordType: "ShopProfiel", predicate: pred)
