@@ -141,6 +141,51 @@ https://apps.apple.com/app/tattoe
 
                     Spacer().frame(height: 16)
 
+                    // Credits
+                    VStack(spacing: 10) {
+                        Text("GEMAAKT DOOR")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(4)
+                            .foregroundColor(Color(white: 0.22))
+
+                        VStack(spacing: 4) {
+                            Text("Ed Cafferata")
+                                .font(.system(size: 13, weight: .black))
+                                .tracking(2)
+                                .foregroundColor(Color(white: 0.4))
+                            Text("Eigenaar · App, software & sites")
+                                .font(.system(size: 10))
+                                .tracking(1)
+                                .foregroundColor(Color(white: 0.25))
+                        }
+
+                        VStack(spacing: 4) {
+                            Text("Tarek")
+                                .font(.system(size: 13, weight: .black))
+                                .tracking(2)
+                                .foregroundColor(Color(white: 0.4))
+                            Text("Mede-ontwikkelaar")
+                                .font(.system(size: 10))
+                                .tracking(1)
+                                .foregroundColor(Color(white: 0.25))
+                        }
+
+                        Spacer().frame(height: 4)
+
+                        Text("ONDERSTEUND DOOR")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(4)
+                            .foregroundColor(Color(white: 0.22))
+
+                        Text("The IT Crowd")
+                            .font(.system(size: 13, weight: .black))
+                            .tracking(2)
+                            .foregroundColor(Color(white: 0.4))
+                    }
+                    .multilineTextAlignment(.center)
+
+                    Spacer().frame(height: 20)
+
                     Text("© 2026 Tattoe")
                         .font(.system(size: 10))
                         .tracking(2)
