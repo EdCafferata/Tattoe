@@ -2530,7 +2530,9 @@ struct ShopOpeningstijdenView: View {
     @EnvironmentObject var store: ShopStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var dagen: [OpeningsDag] = ShopOpeningstijdenView.laadDagen()
+    @State private var dagen:    [OpeningsDag] = ShopOpeningstijdenView.laadDagen()
+    @State private var vakantie: Bool = false
+    @State private var gesloten: Bool = false
     @State private var opgeslagen = false
 
     var body: some View {
@@ -2559,6 +2561,18 @@ struct ShopOpeningstijdenView: View {
                         ForEach($dagen) { $dag in
                             DagRij(dag: $dag)
                         }
+                    }
+                    .padding(.horizontal, 24)
+
+                    Spacer().frame(height: 16)
+
+                    VStack(spacing: 1) {
+                        StatusToggleRij(label: "Vakantie",
+                                        icoon: "sun.max",
+                                        actief: $vakantie)
+                        StatusToggleRij(label: "Gesloten",
+                                        icoon: "lock.fill",
+                                        actief: $gesloten)
                     }
                     .padding(.horizontal, 24)
 
@@ -2600,12 +2614,20 @@ struct ShopOpeningstijdenView: View {
             .padding(.horizontal, 24)
             .padding(.top, 16)
         }
+        .onAppear {
+            let email = store.shop?.email ?? ""
+            vakantie = UserDefaults.standard.bool(forKey: "vakantie_\(email)")
+            gesloten = UserDefaults.standard.bool(forKey: "gesloten_\(email)")
+        }
     }
 
     private func slaOp() {
+        let email = store.shop?.email ?? ""
         if let data = try? JSONEncoder().encode(dagen) {
-            UserDefaults.standard.set(data, forKey: ShopOpeningstijdenView.openingstijdenKey(store.shop?.email ?? ""))
+            UserDefaults.standard.set(data, forKey: ShopOpeningstijdenView.openingstijdenKey(email))
         }
+        UserDefaults.standard.set(vakantie, forKey: "vakantie_\(email)")
+        UserDefaults.standard.set(gesloten, forKey: "gesloten_\(email)")
         genereerTijdBlokken()
         Task { await syncOpeningstijden() }
         withAnimation { opgeslagen = true }
@@ -2637,11 +2659,13 @@ struct ShopOpeningstijdenView: View {
 
     private func syncOpeningstijden() async {
         guard let email = store.shop?.email, !email.isEmpty else { return }
-        let tekst = dagen.map { dag -> String in
+        var regels = dagen.map { dag -> String in
             guard dag.geopend else { return "\(dagNamen[dag.id]): Gesloten" }
             return "\(dagNamen[dag.id]): \(dag.van) – \(dag.tot)"
-        }.joined(separator: "\n")
-        await CloudKitManager.shared.slaOpeningstijdenOp(shopEmail: email, tekst: tekst)
+        }
+        if vakantie { regels.append("Status: Vakantie") }
+        if gesloten { regels.append("Status: Gesloten") }
+        await CloudKitManager.shared.slaOpeningstijdenOp(shopEmail: email, tekst: regels.joined(separator: "\n"))
     }
 
     static func laadDagen(voorShop email: String = "") -> [OpeningsDag] {
@@ -2695,6 +2719,45 @@ private struct DagRij: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .background(Color(white: dag.geopend ? 0.07 : 0.04))
+
+            Rectangle()
+                .fill(Color(white: 0.1))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct StatusToggleRij: View {
+    let label:  String
+    let icoon:  String
+    @Binding var actief: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: icoon)
+                    .font(.system(size: 13))
+                    .foregroundColor(actief ? .white : Color(white: 0.35))
+                    .frame(width: 18)
+                Text(label)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(actief ? .white : Color(white: 0.35))
+                    .frame(width: 90, alignment: .leading)
+                Spacer()
+                if actief {
+                    Text("AAN")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.45))
+                }
+                Toggle("", isOn: $actief)
+                    .labelsHidden()
+                    .tint(Color(white: 0.7))
+                    .frame(width: 44)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(white: actief ? 0.07 : 0.04))
 
             Rectangle()
                 .fill(Color(white: 0.1))
