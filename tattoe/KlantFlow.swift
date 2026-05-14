@@ -879,6 +879,8 @@ struct KlantConsentView: View {
     @State private var risicoNazorg     = false
     @State private var bevestiging      = false
     @State private var uitgevouwen: Int? = nil
+    @State private var pdfTonen         = false
+    @State private var pdfIndex         = 0
 
     private var alleAkkoord: Bool {
         consentFormulier && handtekening && risicoNazorg && bevestiging
@@ -927,12 +929,15 @@ struct KlantConsentView: View {
                 ScrollView {
                     VStack(spacing: 10) {
                         consentKaart(index: 0, binding: $consentFormulier)
-                        consentKaart(index: 1, binding: $handtekening)
                         consentKaart(index: 2, binding: $risicoNazorg)
+                        consentKaart(index: 1, binding: $handtekening)
                         consentKaart(index: 3, binding: $bevestiging)
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 32)
+                }
+                .sheet(isPresented: $pdfTonen) {
+                    ConsentDocumentSheet(index: pdfIndex)
                 }
 
                 // ── Bevestig knop ─────────────────────────
@@ -981,6 +986,7 @@ struct KlantConsentView: View {
     private func consentKaart(index: Int, binding: Binding<Bool>) -> some View {
         let (i, icoon, titel, tekst) = items[index]
         let open = uitgevouwen == i
+        let pdfIdx = index
 
         Button(action: {
             withAnimation(.easeInOut(duration: 0.22)) {
@@ -1030,23 +1036,47 @@ struct KlantConsentView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 16)
 
-                        // Akkoord knop in kaart
-                        Button(action: {
-                            binding.wrappedValue = true
-                            withAnimation { uitgevouwen = nil }
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: binding.wrappedValue ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 13))
-                                Text(binding.wrappedValue ? "Akkoord" : "Klik om akkoord te gaan")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .tracking(1)
+                        // Akkoord + PDF knoppen
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                binding.wrappedValue = true
+                                withAnimation { uitgevouwen = nil }
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: binding.wrappedValue ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 13))
+                                    Text(binding.wrappedValue ? "Akkoord" : "Klik om akkoord te gaan")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .tracking(1)
+                                }
+                                .foregroundColor(binding.wrappedValue ? Color(white: 0.5) : .white)
                             }
-                            .foregroundColor(binding.wrappedValue ? Color(white: 0.5) : .white)
+                            .disabled(binding.wrappedValue)
+
+                            Spacer()
+
+                            Button(action: {
+                                pdfIndex = pdfIdx
+                                pdfTonen = true
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "doc.fill")
+                                        .font(.system(size: 11))
+                                    Text("PDF")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .tracking(1)
+                                }
+                                .foregroundColor(Color(white: 0.45))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .stroke(Color(white: 0.25), lineWidth: 1)
+                                )
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
-                        .disabled(binding.wrappedValue)
                     }
                 }
             }
