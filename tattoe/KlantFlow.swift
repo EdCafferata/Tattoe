@@ -1628,14 +1628,14 @@ struct KlantDashboardView: View {
 
         // 1. Shops ophalen
         alleShops = await CloudKitManager.shared.fetchPubliekeShops()
-        #if DEBUG
-        for shop in TestData.shops where !alleShops.contains(where: { $0.id == shop.id }) {
-            alleShops.append(shop)
+        if isTestomgeving {
+            for shop in TestData.shops where !alleShops.contains(where: { $0.id == shop.id }) {
+                alleShops.append(shop)
+            }
+            for (email, coord) in TestData.shopLocaties {
+                shopLocaties[email] = coord
+            }
         }
-        for (email, coord) in TestData.shopLocaties {
-            shopLocaties[email] = coord
-        }
-        #endif
 
         // 2. Locatie bepalen: GPS → hoofdstad apparaatland
         #if DEBUG
@@ -2006,14 +2006,14 @@ struct KlantOntdekkenView: View {
         async let a = CloudKitManager.shared.fetchPubliekeArtiesten()
         shops     = await s
         artiesten = await a
-        #if DEBUG
-        for shop in TestData.shops where !shops.contains(where: { $0.id == shop.id }) {
-            shops.insert(shop, at: 0)
+        if isTestomgeving {
+            for shop in TestData.shops where !shops.contains(where: { $0.id == shop.id }) {
+                shops.insert(shop, at: 0)
+            }
+            for arties in TestData.artiesten where !artiesten.contains(where: { $0.id == arties.id }) {
+                artiesten.insert(arties, at: 0)
+            }
         }
-        for arties in TestData.artiesten where !artiesten.contains(where: { $0.id == arties.id }) {
-            artiesten.insert(arties, at: 0)
-        }
-        #endif
         laden = false
     }
 }
@@ -3257,11 +3257,11 @@ struct KlantAfsprakenoverzichtView: View {
             let all = await CloudKitManager.shared.fetchAfspraken(klantEmail: email)
             afspraken = all.sorted { $0.datum > $1.datum }
         }
-        #if DEBUG
-        let testIds = Set(afspraken.map { $0.id })
-        let extra = TestData.afsprakenKlant.filter { !testIds.contains($0.id) }
-        afspraken = (extra + afspraken).sorted { $0.datum > $1.datum }
-        #endif
+        if isTestomgeving {
+            let testIds = Set(afspraken.map { $0.id })
+            let extra = TestData.afsprakenKlant.filter { !testIds.contains($0.id) }
+            afspraken = (extra + afspraken).sorted { $0.datum > $1.datum }
+        }
         laden = false
     }
 }

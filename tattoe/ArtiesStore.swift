@@ -331,11 +331,11 @@ class ArtiesStore: ObservableObject {
     func laadBerichten() async {
         guard let email = arties?.email, !email.isEmpty else { return }
         berichten = await CloudKitManager.shared.fetchBerichten(email: email)
-        #if DEBUG
-        let bestaandeIds = Set(berichten.map { $0.id })
-        let extra = TestData.berichtenArties.filter { !bestaandeIds.contains($0.id) }
-        berichten = (extra + berichten).sorted { $0.datum > $1.datum }
-        #endif
+        if isTestomgeving {
+            let bestaandeIds = Set(berichten.map { $0.id })
+            let extra = TestData.berichtenArties.filter { !bestaandeIds.contains($0.id) }
+            berichten = (extra + berichten).sorted { $0.datum > $1.datum }
+        }
         await laadAfsprakenaandacht()
         updateBadge()
     }

@@ -1,6 +1,14 @@
-#if DEBUG
 import Foundation
 import CoreLocation
+
+// true in DEBUG (simulator/device) en TestFlight; false in App Store productie
+var isTestomgeving: Bool {
+    #if DEBUG
+    return true
+    #else
+    return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+    #endif
+}
 
 enum TestData {
 
@@ -245,4 +253,3 @@ enum TestData {
         ]
     }
 }
-#endif

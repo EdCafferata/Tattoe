@@ -1765,11 +1765,11 @@ struct ArtiesAfsprakenView: View {
             afspraken = direct.filter { !["geweigerd", "geannuleerd"].contains($0.status) }
                               .sorted { $0.datum < $1.datum }
         }
-        #if DEBUG
-        let testIds = Set(afspraken.map { $0.id })
-        let extra = TestData.afsprakenArties.filter { !testIds.contains($0.id) }
-        afspraken = (extra + afspraken).sorted { $0.datum < $1.datum }
-        #endif
+        if isTestomgeving {
+            let testIds = Set(afspraken.map { $0.id })
+            let extra = TestData.afsprakenArties.filter { !testIds.contains($0.id) }
+            afspraken = (extra + afspraken).sorted { $0.datum < $1.datum }
+        }
         laden = false
     }
 

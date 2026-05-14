@@ -135,11 +135,9 @@ class ShopStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([VoorraadItem].self, from: data) {
             voorraad = decoded
         }
-        #if DEBUG
-        if voorraad.isEmpty {
+        if isTestomgeving && voorraad.isEmpty {
             voorraad = TestData.voorraadShop
         }
-        #endif
         profielFotoData = try? Data(contentsOf: profielFotoURL())
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
@@ -399,22 +397,19 @@ class ShopStore: ObservableObject {
     }
 
     func laadVoorraad() async {
-        // Haal voorraad op uit lokale opslag; inject testdata in DEBUG als lijst leeg is
-        #if DEBUG
-        if voorraad.isEmpty {
+        if isTestomgeving && voorraad.isEmpty {
             voorraad = TestData.voorraadShop
         }
-        #endif
     }
 
     func laadBerichten() async {
         guard let email = shop?.email, !email.isEmpty else { return }
         berichten = await CloudKitManager.shared.fetchBerichten(email: email)
-        #if DEBUG
-        let bestaandeIds = Set(berichten.map { $0.id })
-        let extra = TestData.berichtenShop.filter { !bestaandeIds.contains($0.id) }
-        berichten = (extra + berichten).sorted { $0.datum > $1.datum }
-        #endif
+        if isTestomgeving {
+            let bestaandeIds = Set(berichten.map { $0.id })
+            let extra = TestData.berichtenShop.filter { !bestaandeIds.contains($0.id) }
+            berichten = (extra + berichten).sorted { $0.datum > $1.datum }
+        }
         await laadAfsprakenaandacht()
         updateBadge()
     }
