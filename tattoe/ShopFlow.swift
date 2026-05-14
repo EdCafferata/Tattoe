@@ -1848,6 +1848,7 @@ struct ShopAfsprakenView: View {
     @State private var toonAgendaVoor: Afspraak? = nil
     @State private var agendaTekst: String? = nil
     @State private var toonAfzeggen: Afspraak? = nil
+    @State private var plannen = false
 
     private let datumFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -1894,6 +1895,7 @@ struct ShopAfsprakenView: View {
                     }
                 }
             }
+            // TERUG
             Button(action: { dismiss() }) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
@@ -1902,8 +1904,27 @@ struct ShopAfsprakenView: View {
                 .foregroundColor(Color(white: 0.35))
             }
             .padding(.leading, 24).padding(.top, 16)
+
+            // Nieuwe afspraak knop
+            Button(action: { plannen = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
+                    Text("NIEUW").font(.system(size: 10, weight: .bold)).tracking(2)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Color(white: 0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.25), lineWidth: 1))
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, 24).padding(.top, 14)
         }
         .task { await herlaad() }
+        .onChange(of: plannen) { if !plannen { Task { await herlaad() } } }
+        .fullScreenCover(isPresented: $plannen) {
+            ShopAfspraakPlannenView().environmentObject(store)
+        }
         .confirmationDialog("Agenda", isPresented: .init(
             get: { toonAgendaVoor != nil },
             set: { if !$0 { toonAgendaVoor = nil } }
@@ -2057,6 +2078,306 @@ struct ShopAfsprakenView: View {
             else     { await store.weigerAfspraak(a)  }
             bezig.remove(a.id)
             await herlaad()
+        }
+    }
+}
+
+// MARK: - Afspraak plannen door shop
+
+struct ShopAfspraakPlannenView: View {
+    @EnvironmentObject var store: ShopStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var klantEmail      = ""
+    @State private var klantNaam       = ""
+    @State private var klantNaamManual = ""
+    @State private var klantStatus: KlantZoekStatus = .leeg
+    @State private var datum           = Calendar.current.date(byAdding: .day, value: 1,
+                                            to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    @State private var artiesEmail     = ""
+    @State private var notitie         = ""
+    @State private var artiesten:      [ArtiestProfiel] = []
+    @State private var bezig           = false
+    @State private var verstuurd       = false
+
+    private enum KlantZoekStatus { case leeg, zoeken, gevonden, nietGevonden }
+
+    private var naamVoorAfspraak: String {
+        klantStatus == .gevonden ? klantNaam : klantNaamManual
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 72)
+
+                    Text("AFSPRAAK PLANNEN")
+                        .font(.system(size: 20, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.white)
+                        .padding(.bottom, 6)
+
+                    Text("Plan direct een afspraak voor een klant")
+                        .font(.system(size: 11))
+                        .tracking(0.5)
+                        .foregroundColor(Color(white: 0.4))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 32)
+
+                    // KLANT
+                    sectieLabel("KLANT")
+
+                    VStack(spacing: 1) {
+                        // Email zoeken
+                        HStack(spacing: 10) {
+                            TextField("E-mailadres klant", text: $klantEmail)
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                                .autocorrectionDisabled()
+                                .onChange(of: klantEmail) { klantStatus = .leeg }
+
+                            if klantStatus == .zoeken {
+                                ProgressView().tint(.white).frame(width: 52)
+                            } else {
+                                Button(action: zoekKlant) {
+                                    Text("ZOEK")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .tracking(2)
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 10).padding(.vertical, 6)
+                                        .background(Color.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                                .disabled(klantEmail.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                        .background(Color(white: 0.07))
+
+                        Rectangle().fill(Color(white: 0.1)).frame(height: 1)
+
+                        // Resultaat
+                        if klantStatus == .gevonden {
+                            HStack(spacing: 10) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(Color(white: 0.6))
+                                    .font(.system(size: 14))
+                                Text(klantNaam)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .background(Color(white: 0.07))
+                            Rectangle().fill(Color(white: 0.1)).frame(height: 1)
+
+                        } else if klantStatus == .nietGevonden {
+                            VStack(spacing: 0) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "exclamationmark.circle")
+                                        .foregroundColor(Color(white: 0.4))
+                                        .font(.system(size: 13))
+                                    Text("Niet gevonden — vul naam in")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(white: 0.4))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16).padding(.vertical, 10)
+                                .background(Color(white: 0.05))
+
+                                Rectangle().fill(Color(white: 0.1)).frame(height: 1)
+
+                                TextField("Naam klant", text: $klantNaamManual)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16).padding(.vertical, 14)
+                                    .background(Color(white: 0.07))
+
+                                Rectangle().fill(Color(white: 0.1)).frame(height: 1)
+                            }
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+
+                    // DATUM & TIJD
+                    sectieLabel("DATUM & TIJD")
+
+                    DatePicker("", selection: $datum, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .colorScheme(.dark)
+                        .accentColor(.white)
+                        .padding(.horizontal, 16)
+                        .background(Color(white: 0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+
+                    // ARTIEST
+                    if !artiesten.isEmpty {
+                        sectieLabel("ARTIEST")
+
+                        VStack(spacing: 1) {
+                            ForEach(artiesten) { a in
+                                let naam = a.kunstnaam.isEmpty ? a.email : a.kunstnaam
+                                Button(action: { artiesEmail = artiesEmail == a.email ? "" : a.email }) {
+                                    HStack {
+                                        Text(naam)
+                                            .font(.system(size: 13))
+                                            .foregroundColor(artiesEmail == a.email ? .white : Color(white: 0.6))
+                                        Spacer()
+                                        if artiesEmail == a.email {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    .padding(.horizontal, 16).padding(.vertical, 14)
+                                    .background(Color(white: artiesEmail == a.email ? 0.1 : 0.07))
+                                }
+                                .buttonStyle(.plain)
+                                Rectangle().fill(Color(white: 0.1)).frame(height: 1)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                    }
+
+                    // NOTITIE
+                    sectieLabel("NOTITIE")
+
+                    TextField("Bijv. arm, grote tattoo, kleur…", text: $notitie, axis: .vertical)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                        .lineLimit(3...6)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                        .background(Color(white: 0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 32)
+
+                    // INPLANNEN
+                    let geldig = !klantEmail.trimmingCharacters(in: .whitespaces).isEmpty
+                              && (klantStatus == .gevonden || !klantNaamManual.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    Button(action: inplannen) {
+                        ZStack {
+                            if bezig {
+                                ProgressView().tint(.black)
+                            } else {
+                                Text(verstuurd ? "INGEPLAND ✓" : "INPLANNEN")
+                                    .font(.system(size: 14, weight: .black))
+                                    .tracking(4)
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(geldig ? Color.white : Color(white: 0.2))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .disabled(!geldig || bezig || verstuurd)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 48)
+                }
+            }
+
+            // Header
+            HStack {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                        Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                    }
+                    .foregroundColor(Color(white: 0.35))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+        }
+        .task {
+            if let email = store.shop?.email {
+                artiesten = await CloudKitManager.shared.fetchArtiesten(voorShop: email)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectieLabel(_ tekst: String) -> some View {
+        Text(tekst)
+            .font(.system(size: 9, weight: .bold))
+            .tracking(4)
+            .foregroundColor(Color(white: 0.35))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 8)
+    }
+
+    private func zoekKlant() {
+        klantStatus = .zoeken
+        Task {
+            let result = await CloudKitManager.shared.fetchKlant(email: klantEmail.trimmingCharacters(in: .whitespaces))
+            await MainActor.run {
+                if let r = result {
+                    klantNaam   = "\(r.klant.voornaam) \(r.klant.achternaam)".trimmingCharacters(in: .whitespaces)
+                    klantStatus = .gevonden
+                } else {
+                    klantStatus = .nietGevonden
+                }
+            }
+        }
+    }
+
+    private func inplannen() {
+        bezig = true
+        let shopEmail  = store.shop?.email ?? ""
+        let naamFinal  = naamVoorAfspraak.isEmpty ? klantEmail : naamVoorAfspraak
+        let emailFinal = klantEmail.trimmingCharacters(in: .whitespaces).lowercased()
+
+        let a = Afspraak(
+            id:          UUID().uuidString,
+            artiesEmail: artiesEmail,
+            shopEmail:   shopEmail,
+            klantEmail:  emailFinal,
+            klantNaam:   naamFinal,
+            datum:       datum,
+            notitie:     notitie,
+            status:      "bevestigd"
+        )
+
+        Task {
+            await CloudKitManager.shared.saveAfspraak(a)
+
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "nl_NL")
+            df.dateFormat = "EEEE d MMMM · HH:mm"
+            let datumTekst = df.string(from: datum)
+            let shopNaam = store.shop?.bedrijfsnaam ?? shopEmail
+
+            let tekst = "\(shopNaam) heeft een afspraak voor u ingepland op \(datumTekst)."
+
+            if !emailFinal.isEmpty {
+                let b = Bericht(ontvangerEmail: emailFinal, ontvangerRol: "klant",
+                                type: "bevestigd", tekst: tekst, afspraakId: a.id, datum: Date())
+                await CloudKitManager.shared.saveBericht(b)
+            }
+
+            await MainActor.run {
+                bezig = false
+                verstuurd = true
+            }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await MainActor.run { dismiss() }
         }
     }
 }
