@@ -1066,14 +1066,19 @@ Met vriendelijke groet,
                                 icoon: "archivebox.fill",
                                 tekst: "Het consentformulier is opgeslagen in de administratie van de shop."
                             )
-                            BevestigingRij(
-                                icoon: "icloud.fill",
-                                tekst: "Alle gegevens worden uitsluitend opgeslagen bij Apple. U kunt uw gegevens altijd zelf direct verwijderen via 'Account verwijderen' in uw Tattoe-app."
-                            )
                         }
                         .padding(.horizontal, 32)
 
-                        Spacer().frame(height: 40)
+                        Spacer().frame(height: 28)
+
+                        Text("Alle gegevens worden uitsluitend opgeslagen bij Apple. U kunt uw gegevens altijd zelf direct verwijderen via 'Account verwijderen' in uw Tattoe-app.")
+                            .font(.system(size: 11))
+                            .tracking(0.2)
+                            .foregroundColor(Color(white: 0.35))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+
+                        Spacer().frame(height: 20)
 
                         Button(action: { store.bevestigingGezien() }) {
                             Text("OK")
