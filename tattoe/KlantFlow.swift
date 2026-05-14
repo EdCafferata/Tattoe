@@ -1068,7 +1068,7 @@ Met vriendelijke groet,
                             )
                             BevestigingRij(
                                 icoon: "icloud.fill",
-                                tekst: "Alle gegevens zijn veilig bewaard in de Tattoe-database."
+                                tekst: "Alle gegevens worden uitsluitend opgeslagen bij Apple en zijn altijd direct door uzelf te verwijderen via de optie in uw app."
                             )
                         }
                         .padding(.horizontal, 32)
