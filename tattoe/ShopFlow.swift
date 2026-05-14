@@ -1005,7 +1005,7 @@ struct ShopNAWView: View {
 // MARK: - Dashboard
 
 private enum ShopSheet: String, Identifiable {
-    case bewerken, afspraken, berichten, beheer, voorraad, openingstijden
+    case bewerken, afspraken, berichten, beheer, voorraad, openingstijden, agenda
     var id: String { rawValue }
 }
 
@@ -1073,22 +1073,42 @@ struct ShopDashboardView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    dashSection("OPENINGSTIJDEN") {
-                        Button(action: { actieveSheet = .openingstijden }) {
-                            HStack {
-                                Image(systemName: "clock")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(white: 0.5))
-                                Text("Beheer openingstijden shop")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color(white: 0.7))
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color(white: 0.3))
+                    dashSection("OPENINGSTIJDEN & AGENDA") {
+                        VStack(spacing: 0) {
+                            Button(action: { actieveSheet = .openingstijden }) {
+                                HStack {
+                                    Image(systemName: "clock")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Color(white: 0.5))
+                                    Text("Beheer openingstijden shop")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color(white: 0.7))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(white: 0.3))
+                                }
                             }
+                            .buttonStyle(.plain)
+
+                            Rectangle().fill(Color(white: 0.1)).frame(height: 1).padding(.vertical, 8)
+
+                            Button(action: { actieveSheet = .agenda }) {
+                                HStack {
+                                    Image(systemName: "calendar.day.timeline.left")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Color(white: 0.5))
+                                    Text("Weekagenda")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color(white: 0.7))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(white: 0.3))
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     dashSection("VOORRAAD") {
                         Button(action: { actieveSheet = .voorraad }) {
@@ -1181,6 +1201,7 @@ struct ShopDashboardView: View {
             case .beheer:    ShopBeheerView().environmentObject(store)
             case .voorraad:        VoorraadView().environmentObject(store)
             case .openingstijden:  ShopOpeningstijdenView().environmentObject(store)
+            case .agenda:          ShopAgendaView().environmentObject(store)
             }
         }
         .alert("Pro-functie", isPresented: $showWebsiteProAlert) {
@@ -2544,7 +2565,7 @@ struct ShopOpeningstijdenView: View {
                     Spacer().frame(height: 32)
 
                     if opgeslagen {
-                        Text("Opgeslagen ✓")
+                        Text("Opgeslagen — agenda bijgewerkt ✓")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(Color(white: 0.5))
                             .padding(.bottom, 8)
@@ -2585,9 +2606,33 @@ struct ShopOpeningstijdenView: View {
         if let data = try? JSONEncoder().encode(dagen) {
             UserDefaults.standard.set(data, forKey: ShopOpeningstijdenView.openingstijdenKey(store.shop?.email ?? ""))
         }
+        genereerTijdBlokken()
         Task { await syncOpeningstijden() }
         withAnimation { opgeslagen = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { opgeslagen = false }
+    }
+
+    private func genereerTijdBlokken() {
+        guard let email = store.shop?.email, !email.isEmpty else { return }
+        let cal = Calendar.current
+        let vandaag = cal.startOfDay(for: Date())
+        let wd = cal.component(.weekday, from: vandaag)
+        let daysToMon = (wd == 1 ? -6 : 2 - wd)
+        guard let thisMon = cal.date(byAdding: .day, value: daysToMon, to: vandaag) else { return }
+
+        var blokken: [TijdBlok] = []
+        for weekOff in 0..<12 {
+            guard let weekMon = cal.date(byAdding: .weekOfYear, value: weekOff, to: thisMon) else { continue }
+            for dagIdx in 0..<7 {
+                let dag = dagen[dagIdx]
+                guard dag.geopend else { continue }
+                guard let datum = cal.date(byAdding: .day, value: dagIdx, to: weekMon) else { continue }
+                blokken.append(TijdBlok(datum: datum, van: dag.van, tot: dag.tot))
+            }
+        }
+        if let data = try? JSONEncoder().encode(blokken) {
+            UserDefaults.standard.set(data, forKey: "tijdblokken_\(email)")
+        }
     }
 
     private func syncOpeningstijden() async {
@@ -2671,5 +2716,258 @@ private struct TijdVeld: View {
             .background(Color(white: 0.12))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.2), lineWidth: 1))
+    }
+}
+
+// MARK: - TijdBlok
+
+struct TijdBlok: Identifiable, Codable {
+    var id:    String = UUID().uuidString
+    var datum: Date
+    var van:   String   // "09:00"
+    var tot:   String   // "17:00"
+}
+
+// MARK: - ShopAgendaView
+
+private let agendaStartUur = 7
+private let agendaEindUur  = 21
+
+struct ShopAgendaView: View {
+    @EnvironmentObject var store: ShopStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var weekOffset: Int      = 0
+    @State private var afspraken:  [Afspraak] = []
+
+    private let uurHoogte:   CGFloat = 60
+    private let dagBreedte:  CGFloat = 54
+    private let tijdBreedte: CGFloat = 34
+
+    // MARK: - Helpers
+
+    private var weekDagen: [Date] {
+        let cal = Calendar.current
+        let vandaag = cal.startOfDay(for: Date())
+        let wd = cal.component(.weekday, from: vandaag)
+        let daysToMon = (wd == 1 ? -6 : 2 - wd)
+        guard let monday = cal.date(byAdding: .day, value: daysToMon + weekOffset * 7, to: vandaag)
+        else { return [] }
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: monday) }
+    }
+
+    private var weekLabel: String {
+        guard let first = weekDagen.first, let last = weekDagen.last else { return "" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nl_NL")
+        f.dateFormat = "d MMM"
+        return "\(f.string(from: first)) – \(f.string(from: last))"
+    }
+
+    private var totaalHoogte: CGFloat {
+        CGFloat(agendaEindUur - agendaStartUur) * uurHoogte
+    }
+
+    private func blokken(voor datum: Date) -> [TijdBlok] {
+        guard let email = store.shop?.email,
+              let data = UserDefaults.standard.data(forKey: "tijdblokken_\(email)"),
+              let alle = try? JSONDecoder().decode([TijdBlok].self, from: data)
+        else { return [] }
+        return alle.filter { Calendar.current.isDate($0.datum, inSameDayAs: datum) }
+    }
+
+    private func afsprakenOp(_ datum: Date) -> [Afspraak] {
+        afspraken.filter { Calendar.current.isDate($0.datum, inSameDayAs: datum) }
+    }
+
+    private func yOff(_ tijdStr: String) -> CGFloat {
+        let p = tijdStr.split(separator: ":").compactMap { Int($0) }
+        guard p.count == 2 else { return 0 }
+        return CGFloat((p[0] - agendaStartUur) * 60 + p[1]) / 60.0 * uurHoogte
+    }
+
+    private func blokHoogte(_ van: String, _ tot: String) -> CGFloat {
+        max(yOff(tot) - yOff(van), uurHoogte * 0.5)
+    }
+
+    private func tijdLabel(_ datum: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"
+        return f.string(from: datum)
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+
+            ScrollView(.vertical, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 0) {
+                    // Time axis
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 90)
+                        ForEach(agendaStartUur...agendaEindUur, id: \.self) { uur in
+                            Text(String(format: "%02d", uur))
+                                .font(.system(size: 9, weight: .medium).monospacedDigit())
+                                .foregroundColor(Color(white: 0.28))
+                                .frame(width: tijdBreedte, height: uurHoogte, alignment: .top)
+                                .padding(.top, -3)
+                        }
+                    }
+
+                    // Day columns
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 2) {
+                            ForEach(weekDagen, id: \.self) { dag in
+                                dagKolom(dag)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 40)
+            }
+
+            // Fixed header
+            VStack(spacing: 0) {
+                HStack {
+                    Button(action: { dismiss() }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                            Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                        }
+                        .foregroundColor(Color(white: 0.35))
+                    }
+                    Spacer()
+                    Text("AGENDA")
+                        .font(.system(size: 14, weight: .black))
+                        .tracking(5)
+                        .foregroundColor(.white)
+                    Spacer()
+                    // Balance
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrowtriangle.left.fill").font(.system(size: 8))
+                        Text("TERUG").font(.system(size: 11, weight: .semibold)).tracking(3)
+                    }
+                    .foregroundColor(.clear)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(Color.black)
+
+                HStack(spacing: 20) {
+                    Button(action: { weekOffset -= 1 }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color(white: 0.45))
+                    }
+                    Text(weekLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.65))
+                        .frame(minWidth: 130)
+                    Button(action: { weekOffset += 1 }) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color(white: 0.45))
+                    }
+                }
+                .padding(.vertical, 8)
+                .background(Color.black)
+
+                Rectangle().fill(Color(white: 0.1)).frame(height: 1)
+            }
+        }
+        .task { await herlaad() }
+    }
+
+    // MARK: - Day column
+
+    private func dagKolom(_ datum: Date) -> some View {
+        let cal = Calendar.current
+        let isVandaag = cal.isDateInToday(datum)
+        let dagBlokken = blokken(voor: datum)
+        let dagAfspraken = afsprakenOp(datum)
+
+        return VStack(spacing: 0) {
+            dagHeader(datum, isVandaag: isVandaag)
+
+            ZStack(alignment: .topLeading) {
+                // Background hour rows
+                VStack(spacing: 0) {
+                    ForEach(0..<(agendaEindUur - agendaStartUur), id: \.self) { _ in
+                        VStack(spacing: 0) {
+                            Color(white: 0.07).frame(height: uurHoogte / 2)
+                            Color(white: 0.05).frame(height: uurHoogte / 2)
+                        }
+                    }
+                }
+
+                // Open hours blocks
+                ForEach(dagBlokken) { blok in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(white: 0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(Color(white: 0.24), lineWidth: 0.5)
+                        )
+                        .frame(width: dagBreedte - 4, height: blokHoogte(blok.van, blok.tot))
+                        .offset(x: 2, y: yOff(blok.van))
+                }
+
+                // Afspraken
+                ForEach(dagAfspraken) { a in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.white)
+                        .frame(width: dagBreedte - 8, height: uurHoogte * 0.9)
+                        .overlay(
+                            Text(a.klantNaam)
+                                .font(.system(size: 7, weight: .semibold))
+                                .foregroundColor(.black)
+                                .lineLimit(2)
+                                .padding(3),
+                            alignment: .topLeading
+                        )
+                        .offset(x: 4, y: yOff(tijdLabel(a.datum)))
+                }
+            }
+            .frame(width: dagBreedte, height: totaalHoogte)
+        }
+    }
+
+    private func dagHeader(_ datum: Date, isVandaag: Bool) -> some View {
+        let cal = Calendar.current
+        let dagNum = cal.component(.day, from: datum)
+        let wd = cal.component(.weekday, from: datum)
+        let dagIdx = wd == 1 ? 6 : wd - 2
+        let korteNaam = String(dagNamen[dagIdx].prefix(2)).uppercased()
+
+        return VStack(spacing: 3) {
+            Text(korteNaam)
+                .font(.system(size: 9, weight: .bold))
+                .tracking(1)
+                .foregroundColor(isVandaag ? .white : Color(white: 0.35))
+            ZStack {
+                if isVandaag {
+                    Circle().fill(Color.white).frame(width: 24, height: 24)
+                }
+                Text("\(dagNum)")
+                    .font(.system(size: 13, weight: isVandaag ? .bold : .regular))
+                    .foregroundColor(isVandaag ? .black : Color(white: 0.5))
+            }
+        }
+        .frame(width: dagBreedte, height: 44)
+        .background(isVandaag ? Color(white: 0.09) : Color.clear)
+    }
+
+    // MARK: - Load
+
+    private func herlaad() async {
+        guard let email = store.shop?.email else { return }
+        let via_shop   = await CloudKitManager.shared.fetchAfspraken(shopEmail: email)
+        let via_arties = await CloudKitManager.shared.fetchAfspraken(artiesEmail: email)
+        let alle = (via_shop + via_arties).reduce(into: [String: Afspraak]()) { $0[$1.id] = $1 }
+        await MainActor.run {
+            afspraken = Array(alle.values).sorted { $0.datum < $1.datum }
+        }
     }
 }
