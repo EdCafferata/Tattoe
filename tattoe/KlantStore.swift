@@ -116,14 +116,18 @@ struct Klant: Codable {
 
 @MainActor
 class KlantStore: ObservableObject {
-    @Published var klant:            Klant?
-    @Published var isLoggedIn:       Bool = false
-    @Published var consentGegeven:   Bool = false
-    @Published var isCheckingCloud:  Bool = false
-    @Published var favorietArties:   ArtiestProfiel? = nil
-    @Published var favorietShop:     ShopProfiel?    = nil
-    @Published var berichten:        [Bericht]       = []
-    @Published var profielFotoData:  Data?           = nil
+    @Published var klant:                Klant?
+    @Published var isLoggedIn:           Bool = false
+    @Published var consentGegeven:       Bool = false
+    @Published var isCheckingCloud:      Bool = false
+    @Published var favorietArties:       ArtiestProfiel? = nil
+    @Published var favorietShop:         ShopProfiel?    = nil
+    @Published var berichten:            [Bericht]       = []
+    @Published var profielFotoData:      Data?           = nil
+    @Published var tijdelijkSyncGedaan:  Bool = false
+
+    // Tijdelijk modus: data alleen lokaal, sync pas bij consent, daarna alles opruimen
+    var tijdelijkModus = false
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
     @Published var afsprakenaandacht: Int = 0
@@ -138,7 +142,9 @@ class KlantStore: ObservableObject {
     private var syncTask:          Task<Void, Never>?
     private var gelezenIds:        Set<String> = []
 
-    init() {
+    init(tijdelijk: Bool = false) {
+        self.tijdelijkModus = tijdelijk
+        guard !tijdelijk else { return } // tijdelijke store: leeg starten, geen UserDefaults
         isLoggedIn     = UserDefaults.standard.bool(forKey: loginKey)
         consentGegeven = UserDefaults.standard.bool(forKey: consentKey)
         if let data = UserDefaults.standard.data(forKey: dataKey) {
@@ -156,6 +162,19 @@ class KlantStore: ObservableObject {
         profielFotoData = try? Data(contentsOf: profielFotoURL())
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
+    }
+
+    func resetVoorTijdelijkGebruik() {
+        stopSync()
+        klant              = nil
+        isLoggedIn         = false
+        consentGegeven     = false
+        favorietArties     = nil
+        favorietShop       = nil
+        berichten          = []
+        profielFotoData    = nil
+        tijdelijkSyncGedaan = false
+        tijdelijkModus     = true
     }
 
     func saveProfielFoto(_ data: Data) {
@@ -214,6 +233,7 @@ class KlantStore: ObservableObject {
     func save(_ klant: Klant) {
         self.klant      = klant
         self.isLoggedIn = true
+        if tijdelijkModus { return } // tijdelijk: alleen in geheugen, geen UserDefaults/CloudKit
         UserDefaults.standard.set(true, forKey: loginKey)
         if let data = try? JSONEncoder().encode(klant) {
             UserDefaults.standard.set(data, forKey: dataKey)
@@ -235,6 +255,23 @@ class KlantStore: ObservableObject {
 
     func saveConsent() {
         consentGegeven = true
+        if tijdelijkModus {
+            guard let klant else { return }
+            Task {
+                try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true)
+                await MainActor.run {
+                    // Alles opruimen — UserDefaults nooit aangeraakt, dus geen cleanup nodig
+                    self.stopSync()
+                    self.klant          = nil
+                    self.isLoggedIn     = false
+                    self.consentGegeven = false
+                    self.berichten      = []
+                    self.profielFotoData = nil
+                    self.tijdelijkSyncGedaan = true // signaal voor ShopFlow om terug te keren
+                }
+            }
+            return
+        }
         UserDefaults.standard.set(true, forKey: consentKey)
         if let klant { Task { try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true) } }
     }
@@ -267,12 +304,12 @@ class KlantStore: ObservableObject {
         klant          = result.klant
         consentGegeven = result.consent
         isLoggedIn     = true
+        if tijdelijkModus { return } // niet naar UserDefaults, geen achtergrond sync
         UserDefaults.standard.set(true, forKey: loginKey)
         UserDefaults.standard.set(result.consent, forKey: consentKey)
         if let data = try? JSONEncoder().encode(result.klant) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
-        // Herstel favorieten uit CloudKit
         if let artiesEmail = result.favorietArtiesEmail, !artiesEmail.isEmpty {
             if let profiel = await CloudKitManager.shared.fetchPubliekArties(email: artiesEmail) {
                 favorietArties = profiel
@@ -304,12 +341,12 @@ class KlantStore: ObservableObject {
         klant          = result.klant
         consentGegeven = result.consent
         isLoggedIn     = true
+        if tijdelijkModus { return nil } // niet naar UserDefaults, geen achtergrond sync
         UserDefaults.standard.set(true, forKey: loginKey)
         UserDefaults.standard.set(result.consent, forKey: consentKey)
         if let data = try? JSONEncoder().encode(result.klant) {
             UserDefaults.standard.set(data, forKey: dataKey)
         }
-        // Herstel favorieten
         if let artiesEmail = result.favorietArtiesEmail, !artiesEmail.isEmpty {
             if let profiel = await CloudKitManager.shared.fetchPubliekArties(email: artiesEmail) {
                 favorietArties = profiel

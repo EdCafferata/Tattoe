@@ -1474,6 +1474,7 @@ struct ShopModeKeuzeView: View {
 
     @State private var showBeheren  = false
     @State private var showAlsKlant = false
+    @StateObject private var tijdelijkeKlantStore = KlantStore(tijdelijk: true)
 
     var body: some View {
         ZStack {
@@ -1542,7 +1543,10 @@ struct ShopModeKeuzeView: View {
                 Spacer().frame(height: 48)
 
                 VStack(spacing: 12) {
-                    Button(action: { showAlsKlant = true }) {
+                    Button(action: {
+                        tijdelijkeKlantStore.resetVoorTijdelijkGebruik()
+                        showAlsKlant = true
+                    }) {
                         HStack(spacing: 16) {
                             ZStack {
                                 Circle().fill(Color(white: 0.12)).frame(width: 44, height: 44)
@@ -1620,8 +1624,11 @@ struct ShopModeKeuzeView: View {
                 .environmentObject(store)
         }
         .fullScreenCover(isPresented: $showAlsKlant) {
-            ShopAlsKlantView()
-                .environmentObject(store)
+            KlantFlowView(onLogout: { showAlsKlant = false })
+                .environmentObject(tijdelijkeKlantStore)
+        }
+        .onChange(of: tijdelijkeKlantStore.tijdelijkSyncGedaan) { _, gedaan in
+            if gedaan { showAlsKlant = false }
         }
         .onChange(of: showAlsKlant) { _, nieuw in
             if !nieuw { store.syncNu() }
