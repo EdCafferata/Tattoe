@@ -387,6 +387,7 @@ final class CloudKitManager {
         record["bedrijfsnaam"] = shop.bedrijfsnaam
         record["woonplaats"]   = shop.woonplaats
         record["email"]        = shop.email.lowercased()
+        record["telefoon"]     = shop.telefoon
 
         try? await publicDb.save(record)
     }
@@ -411,7 +412,8 @@ final class CloudKitManager {
             id:           email,
             bedrijfsnaam: r["bedrijfsnaam"] as? String ?? "",
             woonplaats:   r["woonplaats"]   as? String ?? "",
-            email:        email
+            email:        email,
+            telefoon:     r["telefoon"]     as? String ?? ""
         )
     }
 

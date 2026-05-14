@@ -2219,7 +2219,11 @@ private struct ShopInfoKaartje: View {
             .compactMap { $0 }.filter { !$0.isEmpty }
         return delen.isEmpty ? nil : delen.joined(separator: " ")
     }
-    private var telefoon: String? { pin.mapItem?.phoneNumber }
+    private var telefoon: String? {
+        if let t = pin.mapItem?.phoneNumber, !t.isEmpty { return t }
+        if let t = appShop?.telefoon, !t.isEmpty { return t }
+        return nil
+    }
     private var website: URL?     { pin.mapItem?.url }
 
     var body: some View {

@@ -58,6 +58,24 @@ struct ShopProfiel: Identifiable, Codable {
     var bedrijfsnaam: String
     var woonplaats:   String
     var email:        String
+    var telefoon:     String   = ""
+
+    init(id: String, bedrijfsnaam: String, woonplaats: String, email: String, telefoon: String = "") {
+        self.id           = id
+        self.bedrijfsnaam = bedrijfsnaam
+        self.woonplaats   = woonplaats
+        self.email        = email
+        self.telefoon     = telefoon
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id           = try  c.decode(String.self, forKey: .id)
+        bedrijfsnaam = try  c.decode(String.self, forKey: .bedrijfsnaam)
+        woonplaats   = try  c.decode(String.self, forKey: .woonplaats)
+        email        = try  c.decode(String.self, forKey: .email)
+        telefoon     = (try? c.decodeIfPresent(String.self, forKey: .telefoon)) ?? ""
+    }
 }
 
 struct Afspraak: Identifiable, Codable {
