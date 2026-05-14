@@ -1,8 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var instagramKopieerdToast = false
 
+    private let appURL = "https://apps.apple.com/app/tattoe"
     private let shareText = """
 Tattoe — De app voor tattoo liefhebbers, artiesten en shops.
 
@@ -75,13 +78,12 @@ https://apps.apple.com/app/tattoe
                         Spacer().frame(height: 40)
                     }
 
-                    // Divider
                     DiamondDivider()
                         .padding(.horizontal, 32)
 
                     Spacer().frame(height: 40)
 
-                    // Roles
+                    // Rol-kaarten
                     VStack(spacing: 28) {
                         AboutRolKaart(
                             icon: "paintbrush.pointed.fill",
@@ -89,14 +91,12 @@ https://apps.apple.com/app/tattoe
                             subtitel: "Voor tattoo artiesten",
                             tekst: "Presenteer je werk aan duizenden liefhebbers. Beheer al je afspraken, klantberichten en portfolio in één overzichtelijke app — zodat jij je kunt focussen op waar je goed in bent: kunst."
                         )
-
                         AboutRolKaart(
                             icon: "heart.fill",
                             titel: "KLANT",
                             subtitel: "Voor tattoo liefhebbers",
                             tekst: "Vind de perfecte artiest bij jou in de buurt. Blader door stijlen, bekijk portfolio's en plan je afspraak direct. Van eerste idee tot permanente herinnering — Tattoe begeleidt je door het hele proces."
                         )
-
                         AboutRolKaart(
                             icon: "storefront.fill",
                             titel: "SHOP",
@@ -108,13 +108,11 @@ https://apps.apple.com/app/tattoe
 
                     Spacer().frame(height: 40)
 
-                    // Divider
                     DiamondDivider()
                         .padding(.horizontal, 32)
 
                     Spacer().frame(height: 36)
 
-                    // Tagline
                     Text("INKT VERBINDT")
                         .font(.system(size: 13, weight: .black))
                         .tracking(6)
@@ -122,7 +120,7 @@ https://apps.apple.com/app/tattoe
 
                     Spacer().frame(height: 36)
 
-                    // Share button
+                    // Algemene deel-knop
                     ShareLink(item: shareText) {
                         HStack(spacing: 12) {
                             Image(systemName: "square.and.arrow.up")
@@ -139,7 +137,42 @@ https://apps.apple.com/app/tattoe
                     }
                     .padding(.horizontal, 24)
 
-                    Spacer().frame(height: 16)
+                    Spacer().frame(height: 14)
+
+                    // Sociale media knoppen
+                    HStack(spacing: 12) {
+                        SociaalKnop(label: "WhatsApp", kleur: Color(red: 0.07, green: 0.75, blue: 0.37), symbool: "message.fill") {
+                            deelViaWhatsApp()
+                        }
+                        SociaalKnop(label: "Facebook", kleur: Color(red: 0.23, green: 0.35, blue: 0.60), symbool: "f.circle.fill") {
+                            deelViaFacebook()
+                        }
+                        SociaalKnop(label: "X", kleur: Color(white: 0.15), symbool: "x.circle.fill") {
+                            deelViaX()
+                        }
+                        SociaalKnop(label: "Instagram", kleur: Color(red: 0.88, green: 0.19, blue: 0.42), symbool: "camera.fill") {
+                            deelViaInstagram()
+                        }
+                        SociaalKnop(label: "Telegram", kleur: Color(red: 0.16, green: 0.60, blue: 0.87), symbool: "paperplane.fill") {
+                            deelViaTelegram()
+                        }
+                    }
+                    .padding(.horizontal, 24)
+
+                    if instagramKopieerdToast {
+                        Text("Tekst gekopieerd — plak in Instagram")
+                            .font(.system(size: 11, weight: .medium))
+                            .tracking(0.5)
+                            .foregroundColor(Color(white: 0.5))
+                            .padding(.top, 6)
+                    }
+
+                    Spacer().frame(height: 28)
+
+                    DiamondDivider()
+                        .padding(.horizontal, 32)
+
+                    Spacer().frame(height: 28)
 
                     // Credits
                     VStack(spacing: 10) {
@@ -213,6 +246,72 @@ https://apps.apple.com/app/tattoe
                 Spacer()
             }
         }
+    }
+
+    // MARK: - Deel-acties
+
+    private func deelViaWhatsApp() {
+        let encoded = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        openApp("whatsapp://send?text=\(encoded)", fallback: "https://wa.me/?text=\(encoded)")
+    }
+
+    private func deelViaFacebook() {
+        let encoded = appURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        openApp("fb://", fallback: "https://www.facebook.com/sharer/sharer.php?u=\(encoded)")
+    }
+
+    private func deelViaX() {
+        let encoded = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        openApp("twitter://post?message=\(encoded)", fallback: "https://twitter.com/intent/tweet?text=\(encoded)")
+    }
+
+    private func deelViaInstagram() {
+        UIPasteboard.general.string = shareText
+        instagramKopieerdToast = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { instagramKopieerdToast = false }
+        openApp("instagram://", fallback: "https://www.instagram.com")
+    }
+
+    private func deelViaTelegram() {
+        let encodedText = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedURL  = appURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        openApp("tg://msg?text=\(encodedText)", fallback: "https://t.me/share/url?url=\(encodedURL)&text=\(encodedText)")
+    }
+
+    private func openApp(_ appScheme: String, fallback webURL: String) {
+        if let url = URL(string: appScheme), UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else if let web = URL(string: webURL) {
+            UIApplication.shared.open(web)
+        }
+    }
+}
+
+private struct SociaalKnop: View {
+    let label: String
+    let kleur: Color
+    let symbool: String
+    let actie: () -> Void
+
+    var body: some View {
+        Button(action: actie) {
+            VStack(spacing: 6) {
+                Image(systemName: symbool)
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(kleur)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.4))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 
