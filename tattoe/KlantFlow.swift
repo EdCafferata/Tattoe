@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import PhotosUI
 
 // MARK: - Flow orchestrator
 
@@ -596,6 +597,7 @@ struct KlantNAWView: View {
     @State private var fout: String?
     @State private var toonVerwijderBevestiging = false
     @State private var bezig = false
+    @State private var fotoItem: PhotosPickerItem?
     @FocusState private var focus: Veld?
 
     enum Veld: Hashable {
@@ -622,7 +624,51 @@ struct KlantNAWView: View {
                         .tracking(2)
                         .foregroundColor(Color(white: 0.4))
 
-                    Spacer().frame(height: 36)
+                    Spacer().frame(height: 28)
+
+                    PhotosPicker(selection: $fotoItem, matching: .images) {
+                        ZStack(alignment: .bottomTrailing) {
+                            if let data = store.profielFotoData, let img = UIImage(data: data) {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 90, height: 90)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
+                            } else {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(white: 0.1))
+                                        .frame(width: 90, height: 90)
+                                        .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(Color(white: 0.2))
+                                }
+                            }
+                            ZStack {
+                                Circle().fill(Color.white).frame(width: 26, height: 26)
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.black)
+                            }
+                            .offset(x: 3, y: 3)
+                        }
+                    }
+                    .onChange(of: fotoItem) { _, item in
+                        Task {
+                            if let data = try? await item?.loadTransferable(type: Data.self) {
+                                store.saveProfielFoto(data)
+                            }
+                        }
+                    }
+                    Text("PROFIELFOTO")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(3)
+                        .foregroundColor(Color(white: 0.35))
+                        .padding(.top, 8)
+
+                    Spacer().frame(height: 28)
 
                     VStack(spacing: 1) {
                         HStack(spacing: 1) {
@@ -1178,6 +1224,15 @@ struct KlantDashboardView: View {
 
                     // ── Header ──────────────────────────────
                     VStack(spacing: 5) {
+                        if let data = store.profielFotoData, let img = UIImage(data: data) {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 72, height: 72)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color(white: 0.18), lineWidth: 1))
+                                .padding(.bottom, 4)
+                        }
                         Text("WELKOM TERUG")
                             .font(.system(size: 24, weight: .black))
                             .tracking(5)

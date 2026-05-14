@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UserNotifications
 import StoreKit
+import UIKit
 
 struct Shop: Codable {
     var authMethod:       AuthMethod
@@ -74,6 +75,7 @@ class ShopStore: ObservableObject {
     @Published var isCheckingCloud: Bool      = false
     @Published var berichten:       [Bericht] = []
     @Published var voorraad:        [VoorraadItem] = []
+    @Published var profielFotoData: Data?     = nil
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
     @Published var afsprakenaandacht: Int = 0
@@ -138,6 +140,7 @@ class ShopStore: ObservableObject {
             voorraad = TestData.voorraadShop
         }
         #endif
+        profielFotoData = try? Data(contentsOf: profielFotoURL())
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
         Task { await self.controleerAbonnementen() }
@@ -343,12 +346,20 @@ class ShopStore: ObservableObject {
         logout()
     }
 
+    func saveProfielFoto(_ data: Data) {
+        let compressed = compress(data)
+        profielFotoData = compressed
+        try? compressed.write(to: profielFotoURL())
+    }
+
     func logout() {
-        shop       = nil
-        isLoggedIn = false
-        berichten  = []
+        shop            = nil
+        isLoggedIn      = false
+        berichten       = []
+        profielFotoData = nil
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
+        try? FileManager.default.removeItem(at: profielFotoURL())
         updateBadge()
         // sync blijft draaien — shop kan altijd aan staan als kiosk
     }
@@ -447,5 +458,21 @@ class ShopStore: ObservableObject {
         if let data = try? JSONEncoder().encode(voorraad) {
             UserDefaults.standard.set(data, forKey: voorraadKey)
         }
+    }
+
+    private func profielFotoURL() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("shop_profiel.jpg")
+    }
+
+    private func compress(_ data: Data) -> Data {
+        guard let img = UIImage(data: data) else { return data }
+        let maxDim: CGFloat = 512
+        let size = img.size
+        let scale = min(maxDim / max(size.width, size.height), 1)
+        let newSize = scale == 1 ? size : CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
+        return resized.jpegData(compressionQuality: 0.8) ?? data
     }
 }

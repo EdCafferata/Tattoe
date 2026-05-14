@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import PhotosUI
 
 // MARK: - Abonnement data model
 
@@ -763,6 +764,7 @@ struct ShopNAWView: View {
     @State private var fout: String?
     @State private var toonVerwijderBevestiging = false
     @State private var bezig = false
+    @State private var fotoItem: PhotosPickerItem?
     @FocusState private var focus: Veld?
 
     enum Veld: Hashable {
@@ -791,7 +793,51 @@ struct ShopNAWView: View {
                         .tracking(2)
                         .foregroundColor(Color(white: 0.4))
 
-                    Spacer().frame(height: 36)
+                    Spacer().frame(height: 28)
+
+                    PhotosPicker(selection: $fotoItem, matching: .images) {
+                        ZStack(alignment: .bottomTrailing) {
+                            if let data = store.profielFotoData, let img = UIImage(data: data) {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 90, height: 90)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(white: 0.2), lineWidth: 1))
+                            } else {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .fill(Color(white: 0.1))
+                                        .frame(width: 90, height: 90)
+                                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(white: 0.2), lineWidth: 1))
+                                    Image(systemName: "building.2.fill")
+                                        .font(.system(size: 30))
+                                        .foregroundColor(Color(white: 0.2))
+                                }
+                            }
+                            ZStack {
+                                Circle().fill(Color.white).frame(width: 26, height: 26)
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.black)
+                            }
+                            .offset(x: 3, y: 3)
+                        }
+                    }
+                    .onChange(of: fotoItem) { _, item in
+                        Task {
+                            if let data = try? await item?.loadTransferable(type: Data.self) {
+                                store.saveProfielFoto(data)
+                            }
+                        }
+                    }
+                    Text("LOGO")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(3)
+                        .foregroundColor(Color(white: 0.35))
+                        .padding(.top, 8)
+
+                    Spacer().frame(height: 28)
 
                     VStack(spacing: 1) {
                         InkField("BEDRIJFSNAAM", text: $bedrijfsnaam)
@@ -1122,14 +1168,23 @@ struct ShopDashboardView: View {
     @ViewBuilder
     private var shopHeader: some View {
         VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color(white: 0.1))
+            if let data = store.profielFotoData, let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
                     .frame(width: 100, height: 100)
-                    .overlay(Circle().stroke(Color(white: 0.2), lineWidth: 1))
-                Image(systemName: "storefront")
-                    .font(.system(size: 40))
-                    .foregroundColor(Color(white: 0.25))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(white: 0.2), lineWidth: 1))
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(white: 0.1))
+                        .frame(width: 100, height: 100)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(white: 0.2), lineWidth: 1))
+                    Image(systemName: "storefront")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color(white: 0.25))
+                }
             }
             if let s = store.shop {
                 Text(s.bedrijfsnaam.isEmpty ? "\(s.voornaam) \(s.achternaam)" : s.bedrijfsnaam)

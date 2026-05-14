@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import UIKit
 
 enum AuthMethod: String, Codable { case apple, email }
 
@@ -104,6 +105,7 @@ class KlantStore: ObservableObject {
     @Published var favorietArties:   ArtiestProfiel? = nil
     @Published var favorietShop:     ShopProfiel?    = nil
     @Published var berichten:        [Bericht]       = []
+    @Published var profielFotoData:  Data?           = nil
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
     @Published var afsprakenaandacht: Int = 0
@@ -133,8 +135,15 @@ class KlantStore: ObservableObject {
         if let arr = UserDefaults.standard.array(forKey: gelezenKey) as? [String] {
             gelezenIds = Set(arr)
         }
+        profielFotoData = try? Data(contentsOf: profielFotoURL())
         if isLoggedIn { startSync() }
         Task { await requestNotificationPermission() }
+    }
+
+    func saveProfielFoto(_ data: Data) {
+        let compressed = compress(data)
+        profielFotoData = compressed
+        try? compressed.write(to: profielFotoURL())
     }
 
     func markeerGelezen(_ id: String) {
@@ -316,11 +325,13 @@ class KlantStore: ObservableObject {
         favorietArties = nil
         favorietShop   = nil
         berichten      = []
+        profielFotoData = nil
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: dataKey)
         UserDefaults.standard.removeObject(forKey: consentKey)
         UserDefaults.standard.removeObject(forKey: favArtiesKey)
         UserDefaults.standard.removeObject(forKey: favShopKey)
+        try? FileManager.default.removeItem(at: profielFotoURL())
         updateBadge()
     }
 
@@ -388,5 +399,21 @@ class KlantStore: ObservableObject {
     private func requestNotificationPermission() async {
         try? await UNUserNotificationCenter.current()
             .requestAuthorization(options: [.badge])
+    }
+
+    private func profielFotoURL() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("klant_profiel.jpg")
+    }
+
+    private func compress(_ data: Data) -> Data {
+        guard let img = UIImage(data: data) else { return data }
+        let maxDim: CGFloat = 512
+        let size = img.size
+        let scale = min(maxDim / max(size.width, size.height), 1)
+        let newSize = scale == 1 ? size : CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
+        return resized.jpegData(compressionQuality: 0.8) ?? data
     }
 }
