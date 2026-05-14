@@ -9,6 +9,7 @@ enum UserRole {
 
 struct LoginView: View {
     @Binding var selectedRole: UserRole?
+    @State private var showAbout = false
 
     var body: some View {
         ZStack {
@@ -32,12 +33,16 @@ struct LoginView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                // Logo
-                Image("TattoeLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 200, height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 32))
+                // Logo — tik voor About
+                Button(action: { showAbout = true }) {
+                    Image("TattoeLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 200, height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 32))
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showAbout) { AboutView() }
 
                 Spacer().frame(height: 16)
 
