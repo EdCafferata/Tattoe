@@ -312,17 +312,27 @@ struct ShopLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+
+            let uid = cred.user
+            if let e = cred.email,              !e.isEmpty { UserDefaults.standard.set(e, forKey: "apple_email_\(uid)") }
+            if let n = cred.fullName?.givenName,  !n.isEmpty { UserDefaults.standard.set(n, forKey: "apple_fn_\(uid)") }
+            if let n = cred.fullName?.familyName, !n.isEmpty { UserDefaults.standard.set(n, forKey: "apple_ln_\(uid)") }
+
+            let email      = cred.email                     ?? UserDefaults.standard.string(forKey: "apple_email_\(uid)") ?? ""
+            let voornaam   = cred.fullName?.givenName       ?? UserDefaults.standard.string(forKey: "apple_fn_\(uid)")    ?? ""
+            let achternaam = cred.fullName?.familyName      ?? UserDefaults.standard.string(forKey: "apple_ln_\(uid)")    ?? ""
+
             #if DEBUG
             guard !store.isLoggedIn else { return }
             store.saveLocal(Shop(
                 authMethod:   .apple,
-                appleUserID:  cred.user,
+                appleUserID:  uid,
                 bedrijfsnaam: "",
                 kvk:          "",
                 btw:          "",
-                voornaam:     cred.fullName?.givenName  ?? "",
-                achternaam:   cred.fullName?.familyName ?? "",
-                email:        cred.email ?? "",
+                voornaam:     voornaam,
+                achternaam:   achternaam,
+                email:        email,
                 wachtwoord:   "",
                 telefoon:     "",
                 straat:       "",
@@ -332,17 +342,17 @@ struct ShopLoginView: View {
             ))
             #else
             Task {
-                await store.checkCloud(appleUserID: cred.user)
+                await store.checkCloud(appleUserID: uid)
                 if !store.isLoggedIn {
                     store.save(Shop(
                         authMethod:   .apple,
-                        appleUserID:  cred.user,
+                        appleUserID:  uid,
                         bedrijfsnaam: "",
                         kvk:          "",
                         btw:          "",
-                        voornaam:     cred.fullName?.givenName  ?? "",
-                        achternaam:   cred.fullName?.familyName ?? "",
-                        email:        cred.email ?? "",
+                        voornaam:     voornaam,
+                        achternaam:   achternaam,
+                        email:        email,
                         wachtwoord:   "",
                         telefoon:     "",
                         straat:       "",
@@ -350,6 +360,8 @@ struct ShopLoginView: View {
                         postcode:     "",
                         woonplaats:   ""
                     ))
+                } else if !email.isEmpty, store.shop?.email.isEmpty == true {
+                    var s = store.shop!; s.email = email; store.save(s)
                 }
             }
             #endif

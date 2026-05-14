@@ -177,14 +177,24 @@ struct ArtiesLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+
+            let uid = cred.user
+            if let e = cred.email,              !e.isEmpty { UserDefaults.standard.set(e, forKey: "apple_email_\(uid)") }
+            if let n = cred.fullName?.givenName,  !n.isEmpty { UserDefaults.standard.set(n, forKey: "apple_fn_\(uid)") }
+            if let n = cred.fullName?.familyName, !n.isEmpty { UserDefaults.standard.set(n, forKey: "apple_ln_\(uid)") }
+
+            let email      = cred.email                     ?? UserDefaults.standard.string(forKey: "apple_email_\(uid)") ?? ""
+            let voornaam   = cred.fullName?.givenName       ?? UserDefaults.standard.string(forKey: "apple_fn_\(uid)")    ?? ""
+            let achternaam = cred.fullName?.familyName      ?? UserDefaults.standard.string(forKey: "apple_ln_\(uid)")    ?? ""
+
             #if DEBUG
             guard !store.isLoggedIn else { return }
             store.saveLocal(Arties(
                 authMethod:    .apple,
-                appleUserID:   cred.user,
-                voornaam:      cred.fullName?.givenName  ?? "",
-                achternaam:    cred.fullName?.familyName ?? "",
-                email:         cred.email ?? "",
+                appleUserID:   uid,
+                voornaam:      voornaam,
+                achternaam:    achternaam,
+                email:         email,
                 wachtwoord:    "",
                 kunstnaam:     "",
                 specialisatie: "",
@@ -196,14 +206,14 @@ struct ArtiesLoginView: View {
             ))
             #else
             Task {
-                await store.checkCloud(appleUserID: cred.user)
+                await store.checkCloud(appleUserID: uid)
                 if !store.isLoggedIn {
                     store.save(Arties(
                         authMethod:    .apple,
-                        appleUserID:   cred.user,
-                        voornaam:      cred.fullName?.givenName  ?? "",
-                        achternaam:    cred.fullName?.familyName ?? "",
-                        email:         cred.email ?? "",
+                        appleUserID:   uid,
+                        voornaam:      voornaam,
+                        achternaam:    achternaam,
+                        email:         email,
                         wachtwoord:    "",
                         kunstnaam:     "",
                         specialisatie: "",
@@ -213,6 +223,8 @@ struct ArtiesLoginView: View {
                         postcode:      "",
                         woonplaats:    ""
                     ))
+                } else if !email.isEmpty, store.arties?.email.isEmpty == true {
+                    var a = store.arties!; a.email = email; store.save(a)
                 }
             }
             #endif

@@ -181,14 +181,26 @@ struct KlantAppleLoginView: View {
         switch result {
         case .success(let auth):
             guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+
+            // Apple geeft naam + email alleen bij de allereerste login.
+            // Sla ze op zodat herhaalde logins (en TestFlight) ook werken.
+            let uid = cred.user
+            if let e = cred.email,              !e.isEmpty { UserDefaults.standard.set(e, forKey: "apple_email_\(uid)") }
+            if let n = cred.fullName?.givenName,  !n.isEmpty { UserDefaults.standard.set(n, forKey: "apple_fn_\(uid)") }
+            if let n = cred.fullName?.familyName, !n.isEmpty { UserDefaults.standard.set(n, forKey: "apple_ln_\(uid)") }
+
+            let email      = cred.email                     ?? UserDefaults.standard.string(forKey: "apple_email_\(uid)") ?? ""
+            let voornaam   = cred.fullName?.givenName       ?? UserDefaults.standard.string(forKey: "apple_fn_\(uid)")    ?? ""
+            let achternaam = cred.fullName?.familyName      ?? UserDefaults.standard.string(forKey: "apple_ln_\(uid)")    ?? ""
+
             #if DEBUG
             guard !store.isLoggedIn else { return }
             store.saveLocal(Klant(
                 authMethod:  .apple,
-                appleUserID: cred.user,
-                voornaam:    cred.fullName?.givenName  ?? "",
-                achternaam:  cred.fullName?.familyName ?? "",
-                email:       cred.email ?? "",
+                appleUserID: uid,
+                voornaam:    voornaam,
+                achternaam:  achternaam,
+                email:       email,
                 wachtwoord:  "",
                 telefoon:    "",
                 straat:      "",
@@ -198,14 +210,14 @@ struct KlantAppleLoginView: View {
             ))
             #else
             Task {
-                await store.checkCloud(appleUserID: cred.user)
+                await store.checkCloud(appleUserID: uid)
                 if !store.isLoggedIn {
                     store.save(Klant(
                         authMethod:  .apple,
-                        appleUserID: cred.user,
-                        voornaam:    cred.fullName?.givenName  ?? "",
-                        achternaam:  cred.fullName?.familyName ?? "",
-                        email:       cred.email ?? "",
+                        appleUserID: uid,
+                        voornaam:    voornaam,
+                        achternaam:  achternaam,
+                        email:       email,
                         wachtwoord:  "",
                         telefoon:    "",
                         straat:      "",
@@ -213,6 +225,9 @@ struct KlantAppleLoginView: View {
                         postcode:    "",
                         woonplaats:  ""
                     ))
+                } else if !email.isEmpty, store.klant?.email.isEmpty == true {
+                    // Account gevonden maar email miste nog (relay bij herinstallatie)
+                    var k = store.klant!; k.email = email; store.save(k)
                 }
             }
             #endif
