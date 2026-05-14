@@ -197,7 +197,7 @@ https://apps.apple.com/app/tattoe
                                 .font(.system(size: 13, weight: .black))
                                 .tracking(2)
                                 .foregroundColor(Color(white: 0.4))
-                            Text("Mede-ontwikkelaar")
+                            Text("Mede-eigenaar")
                                 .font(.system(size: 10))
                                 .tracking(1)
                                 .foregroundColor(Color(white: 0.25))
