@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import UIKit
+import MessageUI
 
 // MARK: - Sheet wrapper
 
@@ -60,6 +61,42 @@ struct ConsentDocumentSheet: View {
     }
 }
 
+// MARK: - Mail composer wrapper
+
+struct MailComposeView: UIViewControllerRepresentable {
+    let aan:       [String]
+    let onderwerp: String
+    let body:      String
+    let pdfData:   Data
+    let pdfNaam:   String
+    let onDismiss: (Bool) -> Void // Bool = verzonden
+
+    func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let vc = MFMailComposeViewController()
+        vc.mailComposeDelegate = context.coordinator
+        vc.setToRecipients(aan.filter { !$0.isEmpty })
+        vc.setSubject(onderwerp)
+        vc.setMessageBody(body, isHTML: false)
+        vc.addAttachmentData(pdfData, mimeType: "application/pdf", fileName: pdfNaam)
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {}
+
+    class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let onDismiss: (Bool) -> Void
+        init(onDismiss: @escaping (Bool) -> Void) { self.onDismiss = onDismiss }
+
+        func mailComposeController(_ controller: MFMailComposeViewController,
+                                   didFinishWith result: MFMailComposeResult, error: Error?) {
+            controller.dismiss(animated: true)
+            onDismiss(result == .sent)
+        }
+    }
+}
+
 // MARK: - PDFKit wrapper
 
 struct PDFKitView: UIViewRepresentable {
@@ -98,6 +135,105 @@ enum ConsentPDFGenerator {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(naam).pdf")
         try? maak(index: index).write(to: url)
         return url
+    }
+
+    // Gecombineerde getekende PDF met voorblad + alle 4 documenten
+    static func maakGetekend(klantNaam: String, klantEmail: String, shopNaam: String, shopEmail: String) -> Data {
+        let pageRect = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        let datumTijd = DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .medium)
+
+        return renderer.pdfData { ctx in
+            // ── Voorblad ──────────────────────────────────────
+            ctx.beginPage()
+            let pr = PageRenderer(ctx: ctx, pageRect: pageRect)
+
+            // Header balk
+            UIColor.black.setFill()
+            UIBezierPath(rect: CGRect(x: 0, y: 0, width: pageRect.width, height: 88)).fill()
+            NSAttributedString(string: "TATTOE", attributes: [
+                .font: UIFont.systemFont(ofSize: 14, weight: .black),
+                .foregroundColor: UIColor.white, .kern: 7.0
+            ]).draw(at: CGPoint(x: 52, y: 30))
+            UIColor(white: 0.2, alpha: 1).setFill()
+            UIBezierPath(rect: CGRect(x: 0, y: 88, width: pageRect.width, height: 0.5)).fill()
+
+            // Titel sectie
+            pr.y = 130
+            NSAttributedString(string: "GETEKEND CONSENTFORMULIER", attributes: [
+                .font: UIFont.systemFont(ofSize: 20, weight: .black),
+                .foregroundColor: UIColor.black, .kern: 2.0
+            ]).draw(at: CGPoint(x: 52, y: pr.y))
+            pr.y += 32
+
+            NSAttributedString(string: "Tattoo behandeling — digitaal ondertekend", attributes: [
+                .font: UIFont.systemFont(ofSize: 11),
+                .foregroundColor: UIColor(white: 0.45, alpha: 1)
+            ]).draw(at: CGPoint(x: 52, y: pr.y))
+            pr.y += 40
+
+            // Scheidingslijn
+            UIColor(white: 0.8, alpha: 1).setFill()
+            UIBezierPath(rect: CGRect(x: 52, y: pr.y, width: pageRect.width - 104, height: 0.5)).fill()
+            pr.y += 24
+
+            // Klant & shop info
+            let infoAttrs: [(String, String)] = [
+                ("NAAM KLANT",      klantNaam.isEmpty ? "—" : klantNaam),
+                ("E-MAIL KLANT",    klantEmail.isEmpty ? "—" : klantEmail),
+                ("STUDIO",          shopNaam.isEmpty ? "—" : shopNaam),
+                ("E-MAIL STUDIO",   shopEmail.isEmpty ? "—" : shopEmail),
+                ("DATUM & TIJDSTIP", datumTijd),
+            ]
+            for (label, waarde) in infoAttrs {
+                NSAttributedString(string: label, attributes: [
+                    .font: UIFont.systemFont(ofSize: 8, weight: .semibold),
+                    .foregroundColor: UIColor(white: 0.5, alpha: 1), .kern: 2.0
+                ]).draw(at: CGPoint(x: 52, y: pr.y))
+                pr.y += 14
+                NSAttributedString(string: waarde, attributes: [
+                    .font: UIFont.systemFont(ofSize: 12, weight: .medium),
+                    .foregroundColor: UIColor.black
+                ]).draw(at: CGPoint(x: 52, y: pr.y))
+                pr.y += 24
+            }
+
+            pr.y += 16
+            UIColor(white: 0.8, alpha: 1).setFill()
+            UIBezierPath(rect: CGRect(x: 52, y: pr.y, width: pageRect.width - 104, height: 0.5)).fill()
+            pr.y += 28
+
+            // Stempel box
+            let stempelRect = CGRect(x: 52, y: pr.y, width: pageRect.width - 104, height: 72)
+            UIColor(white: 0.04, alpha: 1).setFill()
+            UIBezierPath(roundedRect: stempelRect, cornerRadius: 6).fill()
+            NSAttributedString(string: "✓  DIGITAAL ONDERTEKEND", attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .black),
+                .foregroundColor: UIColor.white, .kern: 2.0
+            ]).draw(at: CGPoint(x: stempelRect.minX + 20, y: stempelRect.minY + 14))
+            NSAttributedString(string: "Alle vier consentdocumenten zijn gelezen en geaccepteerd via de Tattoe-app.", attributes: [
+                .font: UIFont.systemFont(ofSize: 9),
+                .foregroundColor: UIColor(white: 0.6, alpha: 1)
+            ]).draw(in: CGRect(x: stempelRect.minX + 20, y: stempelRect.minY + 36,
+                               width: stempelRect.width - 40, height: 30))
+            pr.y += 90
+
+            NSAttributedString(string: "Dit document is rechtsgeldig op grond van de eIDAS-verordening (EU) nr. 910/2014.", attributes: [
+                .font: UIFont.systemFont(ofSize: 8),
+                .foregroundColor: UIColor(white: 0.55, alpha: 1)
+            ]).draw(at: CGPoint(x: 52, y: pr.y))
+
+            // ── Alle 4 documenten ─────────────────────────────
+            for i in 0..<titels.count {
+                ctx.beginPage()
+                let dpr = PageRenderer(ctx: ctx, pageRect: pageRect)
+                dpr.drawHeader(titel: titels[i])
+                for sectie in secties[i] {
+                    dpr.drawSectie(sectie)
+                }
+                dpr.drawFooter()
+            }
+        }
     }
 
     static func maak(index: Int) -> Data {

@@ -128,6 +128,8 @@ class KlantStore: ObservableObject {
 
     // Tijdelijk modus: data alleen lokaal, sync pas bij consent, daarna alles opruimen
     var tijdelijkModus = false
+    var shopEmailVoorConsent  = ""
+    var shopNaamVoorConsent   = ""
 
     var ongelezen: Int { berichten.filter { !gelezenIds.contains($0.id) }.count }
     @Published var afsprakenaandacht: Int = 0
@@ -256,24 +258,29 @@ class KlantStore: ObservableObject {
     func saveConsent() {
         consentGegeven = true
         if tijdelijkModus {
-            guard let klant else { return }
-            Task {
-                try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true)
-                await MainActor.run {
-                    // Alles opruimen — UserDefaults nooit aangeraakt, dus geen cleanup nodig
-                    self.stopSync()
-                    self.klant          = nil
-                    self.isLoggedIn     = false
-                    self.consentGegeven = false
-                    self.berichten      = []
-                    self.profielFotoData = nil
-                    self.tijdelijkSyncGedaan = true // signaal voor ShopFlow om terug te keren
-                }
-            }
+            // PDF genereren + mail tonen wordt afgehandeld door KlantConsentView
+            // saveConsentEnSync(pdfData:) wordt aangeroepen nadat mail verstuurd/gesloten is
             return
         }
         UserDefaults.standard.set(true, forKey: consentKey)
         if let klant { Task { try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true) } }
+    }
+
+    // Finale sync na mail (tijdelijk modus)
+    func saveConsentEnSync(pdfData: Data?) {
+        guard tijdelijkModus, let klant else { return }
+        Task {
+            try? await CloudKitManager.shared.saveKlant(klant, consentGegeven: true, consentPDF: pdfData)
+            await MainActor.run {
+                self.stopSync()
+                self.klant           = nil
+                self.isLoggedIn      = false
+                self.consentGegeven  = false
+                self.berichten       = []
+                self.profielFotoData = nil
+                self.tijdelijkSyncGedaan = true
+            }
+        }
     }
 
     func slaFavorietArties(_ profiel: ArtiestProfiel) {

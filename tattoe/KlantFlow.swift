@@ -1,6 +1,7 @@
 import SwiftUI
 import AuthenticationServices
 import PhotosUI
+import MessageUI
 
 // MARK: - Flow orchestrator
 
@@ -874,13 +875,16 @@ struct KlantConsentView: View {
     @EnvironmentObject var store: KlantStore
     let onLogout: () -> Void
 
-    @State private var consentFormulier = false
-    @State private var handtekening     = false
-    @State private var risicoNazorg     = false
-    @State private var bevestiging      = false
+    @State private var consentFormulier  = false
+    @State private var handtekening      = false
+    @State private var risicoNazorg      = false
+    @State private var bevestiging       = false
     @State private var uitgevouwen: Int? = nil
-    @State private var pdfTonen         = false
-    @State private var pdfIndex         = 0
+    @State private var pdfTonen          = false
+    @State private var pdfIndex          = 0
+    @State private var toonMail          = false
+    @State private var consentPDFData:   Data? = nil
+    @State private var mailBezig         = false
 
     private var alleAkkoord: Bool {
         consentFormulier && handtekening && risicoNazorg && bevestiging
@@ -946,20 +950,71 @@ struct KlantConsentView: View {
                         .fill(Color(white: 0.1))
                         .frame(height: 1)
 
-                    Button(action: { if alleAkkoord { store.saveConsent() } }) {
+                    Button(action: {
+                        guard alleAkkoord else { return }
+                        if store.tijdelijkModus {
+                            // Genereer PDF en toon mail composer
+                            let naam = "\(store.klant?.voornaam ?? "") \(store.klant?.achternaam ?? "")".trimmingCharacters(in: .whitespaces)
+                            let pdf  = ConsentPDFGenerator.maakGetekend(
+                                klantNaam:  naam,
+                                klantEmail: store.klant?.email ?? "",
+                                shopNaam:   store.shopNaamVoorConsent,
+                                shopEmail:  store.shopEmailVoorConsent
+                            )
+                            consentPDFData = pdf
+                            if MFMailComposeViewController.canSendMail() {
+                                toonMail = true
+                            } else {
+                                // Geen mail app — sla toch op
+                                store.saveConsentEnSync(pdfData: pdf)
+                            }
+                        } else {
+                            store.saveConsent()
+                        }
+                    }) {
                         HStack {
                             Spacer()
-                            Text("IK GA AKKOORD")
-                                .font(.system(size: 14, weight: .black))
-                                .tracking(4)
-                                .foregroundColor(alleAkkoord ? .black : Color(white: 0.3))
+                            if mailBezig {
+                                ProgressView().tint(.black)
+                            } else {
+                                Text("IK GA AKKOORD")
+                                    .font(.system(size: 14, weight: .black))
+                                    .tracking(4)
+                                    .foregroundColor(alleAkkoord ? .black : Color(white: 0.3))
+                            }
                             Spacer()
                         }
                         .frame(height: 56)
                         .background(alleAkkoord ? Color.white : Color(white: 0.12))
                     }
-                    .disabled(!alleAkkoord)
+                    .disabled(!alleAkkoord || mailBezig)
                     .animation(.easeInOut(duration: 0.2), value: alleAkkoord)
+                    .sheet(isPresented: $toonMail, onDismiss: {
+                        if let pdf = consentPDFData {
+                            mailBezig = true
+                            store.saveConsentEnSync(pdfData: pdf)
+                        }
+                    }) {
+                        if let pdf = consentPDFData {
+                            MailComposeView(
+                                aan: [store.klant?.email ?? "", store.shopEmailVoorConsent],
+                                onderwerp: "Getekend consentformulier — Tattoe",
+                                body: """
+Geachte \(store.klant?.voornaam ?? "klant"),
+
+Hierbij ontvangt u het ondertekende consentformulier voor uw tattoo behandeling bij \(store.shopNaamVoorConsent.isEmpty ? "de studio" : store.shopNaamVoorConsent).
+
+Dit document is digitaal ondertekend via de Tattoe-app en rechtsgeldig op grond van de eIDAS-verordening.
+
+Met vriendelijke groet,
+\(store.shopNaamVoorConsent.isEmpty ? "Tattoe" : store.shopNaamVoorConsent)
+""",
+                                pdfData: pdf,
+                                pdfNaam: "Consent_\(store.klant?.voornaam ?? "")_\(store.klant?.achternaam ?? "").pdf",
+                                onDismiss: { _ in toonMail = false }
+                            )
+                        }
+                    }
 
                     #if DEBUG
                     Button(action: { store.saveConsent() }) {

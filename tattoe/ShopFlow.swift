@@ -1545,6 +1545,11 @@ struct ShopModeKeuzeView: View {
                 VStack(spacing: 12) {
                     Button(action: {
                         tijdelijkeKlantStore.resetVoorTijdelijkGebruik()
+                        tijdelijkeKlantStore.shopEmailVoorConsent = store.shop?.email ?? ""
+                        tijdelijkeKlantStore.shopNaamVoorConsent  =
+                            store.shop?.bedrijfsnaam.isEmpty == false
+                            ? store.shop!.bedrijfsnaam
+                            : "\(store.shop?.voornaam ?? "") \(store.shop?.achternaam ?? "")".trimmingCharacters(in: .whitespaces)
                         showAlsKlant = true
                     }) {
                         HStack(spacing: 16) {

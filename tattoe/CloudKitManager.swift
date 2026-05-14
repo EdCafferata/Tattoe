@@ -22,7 +22,7 @@ final class CloudKitManager {
     // MARK: - Klant (private DB)
     // ─────────────────────────────────────────────
 
-    func saveKlant(_ klant: Klant, consentGegeven: Bool) async throws {
+    func saveKlant(_ klant: Klant, consentGegeven: Bool, consentPDF: Data? = nil) async throws {
         let id     = CKRecord.ID(recordName: recordName("klant", klant.appleUserID, klant.email))
         let record = (try? await db.record(for: id)) ?? CKRecord(recordType: "Klant", recordID: id)
 
@@ -39,6 +39,13 @@ final class CloudKitManager {
         record["postcode"]       = klant.postcode
         record["woonplaats"]     = klant.woonplaats
         record["consentGegeven"] = consentGegeven ? 1 : 0
+
+        if let pdf = consentPDF {
+            let tmpURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("consent_\(klant.email.replacingOccurrences(of: "@", with: "_")).pdf")
+            try? pdf.write(to: tmpURL)
+            record["consentPDF"] = CKAsset(fileURL: tmpURL)
+        }
 
         try await db.save(record)
     }
