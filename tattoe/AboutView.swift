@@ -193,7 +193,7 @@ https://apps.apple.com/app/tattoe
                         }
 
                         VStack(spacing: 4) {
-                            Text("Tarek")
+                            Text("Jim Orie")
                                 .font(.system(size: 13, weight: .black))
                                 .tracking(2)
                                 .foregroundColor(Color(white: 0.4))
