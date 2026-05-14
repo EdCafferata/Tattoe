@@ -11,26 +11,51 @@ struct ConsentDocumentSheet: View {
     private var pdfURL: URL { ConsentPDFGenerator.tempURL(index: index) }
 
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+
             PDFKitView(url: pdfURL)
+                .padding(.top, 56)
                 .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(ConsentPDFGenerator.titels[index])
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        ShareLink(item: pdfURL,
-                                  preview: SharePreview(ConsentPDFGenerator.titels[index],
-                                                        image: Image(systemName: "doc.fill"))) {
-                            Image(systemName: "square.and.arrow.up")
-                                .tint(.white)
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Sluiten") { dismiss() }
-                            .tint(.white)
-                    }
+
+            // Header balk
+            HStack(spacing: 0) {
+                ShareLink(item: pdfURL,
+                          preview: SharePreview(ConsentPDFGenerator.titels[index],
+                                                image: Image(systemName: "doc.fill"))) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(white: 0.7))
+                        .frame(width: 44, height: 44)
                 }
+
+                Spacer()
+
+                Text(ConsentPDFGenerator.titels[index].uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(Color(white: 0.55))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Button(action: { dismiss() }) {
+                    Text("SLUITEN")
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(2)
+                        .foregroundColor(.white)
+                        .frame(height: 44)
+                        .padding(.horizontal, 4)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 56)
+            .background(Color.black)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(white: 0.15))
+                    .frame(height: 1)
+            }
         }
     }
 }
