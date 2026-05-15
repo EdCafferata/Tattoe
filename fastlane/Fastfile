@@ -19,6 +19,7 @@ platform :ios do
       project:       "Tattoe.xcodeproj",
       export_method: "app-store",
       configuration: "Release",
+      destination:   "generic/platform=iOS",
       xcargs:        "CURRENT_PROJECT_VERSION=#{build_nr}"
     )
 

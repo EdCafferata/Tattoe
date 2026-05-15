@@ -23,3 +23,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+Tattoe.ipa
+Tattoe.app.dSYM.zip
+.bundle/
