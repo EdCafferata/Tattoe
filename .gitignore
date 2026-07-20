@@ -5,6 +5,8 @@
 fastlane/.env
 fastlane/.env.*
 *.p8
+*.p12
+*.pem
 
 # Xcode
 xcuserdata/
