@@ -1,6 +1,6 @@
 # Tattoe
 
-🔒 Laatste security check: 2026-10-24 23:13 CEST
+🔒 Laatste security check: 2026-10-26 20:42 CET
 
 SwiftUI iOS-app voor tattooshops, tattoo-artiesten en klanten: digitale klantregistratie, ondertekende consent-PDF's, openingstijden- en agendabeheer, en meer — in één app met drie rollen.
 
